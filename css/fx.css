@@ -3,47 +3,67 @@
  * Web Animations API in anim.js; only loops and stamps live here.
  */
 
-@keyframes titleGlow {
-  0%, 100% { filter: drop-shadow(0 0 18px rgba(212, 169, 78, 0.35)); }
-  50%      { filter: drop-shadow(0 0 34px rgba(255, 122, 60, 0.55)); }
+/* playful Balatro-style wobble for big titles */
+@keyframes titleWobble {
+  0%, 100% { transform: rotate(-1.6deg) scale(1); }
+  50%      { transform: rotate(1.6deg) scale(1.025); }
 }
 
-@keyframes emblemSpin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+@keyframes emblemBob {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50%      { transform: translateY(-7px) rotate(1.5deg); }
+}
+
+/* gentle idle wobble for cards sitting in slots */
+@keyframes cardIdle {
+  0%, 100% { transform: translateY(0) rotate(-0.9deg); }
+  50%      { transform: translateY(-2.5px) rotate(0.9deg); }
+}
+
+@keyframes pointerBob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(-4px); }
 }
 
 @keyframes targetPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.55; transform: scale(1.025); }
-}
-
-@keyframes activeBreathe {
-  0%, 100% { opacity: 0.85; }
-  50%      { opacity: 0.35; }
+  0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
+  50%      { opacity: 0.65; transform: scale(1.03) rotate(0.4deg); }
 }
 
 @keyframes stampSlam {
-  0%   { transform: translate(-50%, -50%) rotate(-14deg) scale(3); opacity: 0; }
-  60%  { transform: translate(-50%, -50%) rotate(-14deg) scale(0.92); opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+  0%   { transform: translate(-50%, -50%) rotate(-12deg) scale(3); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) rotate(-12deg) scale(0.9); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(-12deg) scale(1); opacity: 1; }
+}
+
+/* torch flames */
+@keyframes flameFlicker {
+  0%, 100% { transform: translateX(-50%) scale(1) rotate(-2deg); filter: blur(0.6px) brightness(1); }
+  25%      { transform: translateX(-52%) scale(1.06, 0.95) rotate(2.5deg); filter: blur(0.6px) brightness(1.15); }
+  50%      { transform: translateX(-49%) scale(0.94, 1.08) rotate(-1.5deg); filter: blur(0.8px) brightness(0.92); }
+  75%      { transform: translateX(-51%) scale(1.04, 0.98) rotate(1.8deg); filter: blur(0.6px) brightness(1.1); }
+}
+
+@keyframes glowBreathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.55; }
 }
 
 /* charge slot aura — looping while a charge is held */
 @keyframes chargeAura {
-  0%, 100% { opacity: 0.55; transform: scale(1); }
-  50%      { opacity: 1; transform: scale(1.06); }
+  0%, 100% { opacity: 0.6; transform: scale(1) rotate(-1deg); }
+  50%      { opacity: 1; transform: scale(1.06) rotate(1deg); }
 }
 
 @keyframes chargeBob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) rotate(-1.4deg); }
+  50%      { transform: translateY(-5px) rotate(1.4deg); }
 }
 
 .charge-slot.filled { border-color: transparent; }
 
 .charge-slot.filled > .card {
-  animation: chargeBob 2.2s ease-in-out infinite;
+  animation: chargeBob 1.6s ease-in-out infinite;
 }
 
 .charge-slot.filled .charge-aura {
@@ -51,14 +71,13 @@
   inset: -9px;
   border-radius: calc(var(--card-radius) + 9px);
   background: radial-gradient(circle,
-    rgba(255, 190, 80, 0.30) 0%,
-    rgba(255, 122, 60, 0.14) 50%,
+    rgba(255, 200, 98, 0.32) 0%,
+    rgba(255, 175, 46, 0.16) 50%,
     transparent 72%);
-  border: 1px solid rgba(255, 190, 80, 0.5);
-  box-shadow: 0 0 22px rgba(255, 150, 60, 0.5);
-  animation: chargeAura 1.6s ease-in-out infinite;
+  border: 3px dashed rgba(255, 200, 98, 0.75);
+  box-shadow: 0 0 20px rgba(255, 175, 46, 0.5);
+  animation: chargeAura 1.4s ease-in-out infinite;
   pointer-events: none;
-  z-index: -1;
 }
 
 /* floating combat text (positioned by anim.js, animated via WAAPI) */
@@ -68,27 +87,22 @@
   top: 0;
   z-index: 62;
   font-family: var(--font-display);
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  font-size: clamp(1.4rem, 3.6vmin, 2.4rem);
+  letter-spacing: 0.03em;
+  font-size: clamp(1.7rem, 4.2vmin, 2.8rem);
   pointer-events: none;
   white-space: nowrap;
   transform: translate(-50%, -50%);
+  text-shadow:
+    -3px 0 0 #241610, 3px 0 0 #241610, 0 -3px 0 #241610, 0 3px 0 #241610,
+    -2px -2px 0 #241610, 2px -2px 0 #241610, -2px 2px 0 #241610, 2px 2px 0 #241610,
+    0 5px 0 rgba(15, 8, 4, 0.45);
 }
 
-.float-text.damage { color: #ff5f52; text-shadow: 0 0 14px rgba(255, 60, 40, 0.9), 0 2px 4px #000; }
-.float-text.heal   { color: #6ee7a0; text-shadow: 0 0 14px rgba(80, 230, 140, 0.9), 0 2px 4px #000; }
-.float-text.block  { color: var(--steel); text-shadow: 0 0 16px rgba(143, 184, 216, 0.95), 0 2px 4px #000; }
-.float-text.info   { color: var(--gold-bright); text-shadow: 0 0 14px rgba(244, 212, 136, 0.9), 0 2px 4px #000; }
-.float-text.small  { font-size: clamp(0.95rem, 2.2vmin, 1.4rem); }
-
-/* victory screen shimmer */
-@keyframes victoryShimmer {
-  0%, 100% { transform: scale(1); }
-  50%      { transform: scale(1.03); }
-}
-
-#victory-name { animation: victoryShimmer 2.8s ease-in-out infinite; }
+.float-text.damage { color: #ff5f52; }
+.float-text.heal   { color: #6ee786; }
+.float-text.block  { color: #8fc9ff; }
+.float-text.info   { color: var(--gold-bright); }
+.float-text.small  { font-size: clamp(1.1rem, 2.6vmin, 1.7rem); }
 
 /* accessibility: reduced motion */
 @media (prefers-reduced-motion: reduce) {

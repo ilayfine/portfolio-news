@@ -1,7 +1,8 @@
 # ⚔ SHIELD
 
-A dark-fantasy card game for **2–4 players on one screen** (hot-seat), played with a
-standard 52-card deck. Pure HTML/CSS/JS — no build step, no dependencies, no server.
+A medieval castle card game for **2–4 players on one screen** (hot-seat), played with a
+standard 52-card deck — brick walls, flickering torches, a round wooden table, and
+chunky parchment cards with playful, snappy animations. Pure HTML/CSS/JS — no build step, no dependencies, no server.
 
 ## Play it
 

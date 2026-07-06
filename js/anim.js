@@ -9,20 +9,20 @@
   var reduced = false;
   try { reduced = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
 
-  /* central pacing config */
+  /* central pacing config — tuned light & snappy */
   var D = {
-    deal: 300,
-    dealStagger: 95,
-    flyIn: 400,      // deck -> stage
-    flip: 300,
-    stagePause: 520, // dramatic beat while the drawn card is revealed
-    strike: 480,     // stage -> target
-    shake: 340,
-    floatText: 950,
-    tumble: 420,     // card -> discard
-    dissolve: 480,
-    banner: 700,
-    hpTween: 550
+    deal: 240,
+    dealStagger: 70,
+    flyIn: 320,      // deck -> stage
+    flip: 240,
+    stagePause: 340, // short beat while the drawn card is revealed
+    strike: 380,     // stage -> target
+    shake: 280,
+    floatText: 850,
+    tumble: 330,     // card -> discard
+    dissolve: 380,
+    banner: 600,
+    hpTween: 450
   };
 
   function dur(ms) { return reduced ? Math.min(ms, 60) : ms; }
@@ -40,7 +40,11 @@
         fill: opts.fill || 'both',
         delay: opts.delay ? dur(opts.delay) : 0
       });
-      return a.finished.catch(function () {});
+      return a.finished.then(function () {
+        // effects that end at the element's natural state release their fill,
+        // so CSS idle animations (card wobble etc.) resume afterwards
+        if (opts.autoCancel) a.cancel();
+      }).catch(function () {});
     } catch (e) {
       return Promise.resolve();
     }
@@ -139,7 +143,7 @@
       });
     }
     frames.push({ transform: 'translate(0,0)' });
-    return animate(el, frames, { duration: D.shake, easing: 'linear' });
+    return animate(el, frames, { duration: D.shake, easing: 'linear', autoCancel: true });
   }
 
   /* flash a slot's overlay in a given color */
@@ -155,7 +159,7 @@
       { opacity: 0 },
       { opacity: peak || 0.9, offset: 0.25 },
       { opacity: 0 }
-    ], { duration: 420, easing: 'ease-out' });
+    ], { duration: 420, easing: 'ease-out', autoCancel: true });
   }
 
   /* scale/blur a card out of existence (counter scramble) */
@@ -171,7 +175,7 @@
     return animate(el, [
       { transform: 'scale(1.35)', opacity: 0, filter: 'brightness(2.4)' },
       { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' }
-    ], { duration: 260, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)' });
+    ], { duration: 260, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)', autoCancel: true });
   }
 
   function pulse(el, scale) {
@@ -179,7 +183,7 @@
       { transform: 'scale(1)' },
       { transform: 'scale(' + (scale || 1.22) + ')', offset: 0.4 },
       { transform: 'scale(1)' }
-    ], { duration: 380, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+    ], { duration: 380, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', autoCancel: true });
   }
 
   /* animated number ticker for HP orbs */
@@ -202,7 +206,7 @@
     return animate(el, [
       { transform: 'translateY(-16px) scale(0.92)', opacity: 0 },
       { transform: 'translateY(0) scale(1)', opacity: 1 }
-    ], { duration: 380, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)' });
+    ], { duration: 380, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)', autoCancel: true });
   }
 
   global.Shield = global.Shield || {};
