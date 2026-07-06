@@ -1,0 +1,100 @@
+/* SHIELD — fx.css
+ * Keyframes and looping effect classes. One-shot effects are driven by the
+ * Web Animations API in anim.js; only loops and stamps live here.
+ */
+
+@keyframes titleGlow {
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(212, 169, 78, 0.35)); }
+  50%      { filter: drop-shadow(0 0 34px rgba(255, 122, 60, 0.55)); }
+}
+
+@keyframes emblemSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes targetPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(1.025); }
+}
+
+@keyframes activeBreathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.35; }
+}
+
+@keyframes stampSlam {
+  0%   { transform: translate(-50%, -50%) rotate(-14deg) scale(3); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) rotate(-14deg) scale(0.92); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+}
+
+/* charge slot aura — looping while a charge is held */
+@keyframes chargeAura {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes chargeBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+.charge-slot.filled { border-color: transparent; }
+
+.charge-slot.filled > .card {
+  animation: chargeBob 2.2s ease-in-out infinite;
+}
+
+.charge-slot.filled .charge-aura {
+  position: absolute;
+  inset: -9px;
+  border-radius: calc(var(--card-radius) + 9px);
+  background: radial-gradient(circle,
+    rgba(255, 190, 80, 0.30) 0%,
+    rgba(255, 122, 60, 0.14) 50%,
+    transparent 72%);
+  border: 1px solid rgba(255, 190, 80, 0.5);
+  box-shadow: 0 0 22px rgba(255, 150, 60, 0.5);
+  animation: chargeAura 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* floating combat text (positioned by anim.js, animated via WAAPI) */
+.float-text {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 62;
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  font-size: clamp(1.4rem, 3.6vmin, 2.4rem);
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+}
+
+.float-text.damage { color: #ff5f52; text-shadow: 0 0 14px rgba(255, 60, 40, 0.9), 0 2px 4px #000; }
+.float-text.heal   { color: #6ee7a0; text-shadow: 0 0 14px rgba(80, 230, 140, 0.9), 0 2px 4px #000; }
+.float-text.block  { color: var(--steel); text-shadow: 0 0 16px rgba(143, 184, 216, 0.95), 0 2px 4px #000; }
+.float-text.info   { color: var(--gold-bright); text-shadow: 0 0 14px rgba(244, 212, 136, 0.9), 0 2px 4px #000; }
+.float-text.small  { font-size: clamp(0.95rem, 2.2vmin, 1.4rem); }
+
+/* victory screen shimmer */
+@keyframes victoryShimmer {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.03); }
+}
+
+#victory-name { animation: victoryShimmer 2.8s ease-in-out infinite; }
+
+/* accessibility: reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}

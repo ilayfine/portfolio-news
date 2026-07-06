@@ -1,0 +1,125 @@
+/* SHIELD — theme.css
+ * Color system, typography, backgrounds, shared buttons.
+ */
+
+:root {
+  --bg-0: #05050a;
+  --bg-1: #100d18;
+  --bg-2: #1a1424;
+
+  --ink: #e9dfc8;
+  --ink-dim: #9a8f78;
+
+  --gold: #d4a94e;
+  --gold-bright: #f4d488;
+  --ember: #ff7a3c;
+  --steel: #8fb8d8;
+  --blood: #c22e3c;
+
+  /* player accents */
+  --p-crimson: #e2504c;
+  --p-azure: #4ea8de;
+  --p-gold: #e9b44c;
+  --p-emerald: #52b788;
+
+  --font-display: 'Cinzel', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font-body: 'Crimson Pro', Georgia, 'Times New Roman', serif;
+
+  --card-w: clamp(54px, 6.4vmin, 84px);
+  --card-h: calc(var(--card-w) * 1.42);
+  --card-radius: calc(var(--card-w) * 0.09);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(120vmax 90vmax at 50% 118%, rgba(255, 108, 40, 0.10), transparent 55%),
+    radial-gradient(90vmax 70vmax at 50% 42%, var(--bg-2) 0%, var(--bg-1) 45%, var(--bg-0) 100%);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------- shared buttons ---------------- */
+
+.btn {
+  position: relative;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: clamp(0.85rem, 1.7vmin, 1.05rem);
+  padding: 0.85em 2.2em;
+  border-radius: 4px;
+  transition: transform 0.18s cubic-bezier(.34,1.56,.64,1), box-shadow 0.25s ease, color 0.2s ease;
+}
+
+.btn-primary {
+  color: #1b1206;
+  background: linear-gradient(175deg, var(--gold-bright) 0%, var(--gold) 45%, #a97f2e 100%);
+  border: 1px solid #f7e2ac;
+  box-shadow:
+    0 0 0 1px #6d5320,
+    0 4px 18px rgba(212, 169, 78, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.5);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    0 0 0 1px #6d5320,
+    0 8px 30px rgba(212, 169, 78, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.btn-primary:active { transform: translateY(0) scale(0.99); }
+
+.btn-ghost {
+  color: var(--ink-dim);
+  border: 1px solid rgba(233, 223, 200, 0.22);
+  background: rgba(233, 223, 200, 0.04);
+}
+
+.btn-ghost:hover {
+  color: var(--ink);
+  border-color: rgba(233, 223, 200, 0.45);
+  transform: translateY(-1px);
+}
+
+.btn-icon {
+  position: fixed;
+  right: 18px;
+  bottom: 16px;
+  z-index: 80;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  font-size: 1.15rem;
+  color: var(--ink-dim);
+  border: 1px solid rgba(233, 223, 200, 0.2);
+  background: rgba(10, 8, 16, 0.6);
+  backdrop-filter: blur(4px);
+  transition: color 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.btn-icon:hover { color: var(--gold-bright); border-color: var(--gold); transform: scale(1.08); }
+.btn-icon.muted { color: #5a5348; text-decoration: line-through; }
+
+.hidden { display: none !important; }
