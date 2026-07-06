@@ -53,6 +53,29 @@
     });
   }
 
+  /* small sparks rising from the wall torches */
+  function spawnTorchSparks() {
+    var flames = document.querySelectorAll('.t-flame');
+    for (var i = 0; i < flames.length; i++) {
+      if (Math.random() > 0.6) continue;
+      var r = flames[i].getBoundingClientRect();
+      if (!r.width) continue;
+      spawn({
+        x: r.left + r.width * (0.3 + Math.random() * 0.4),
+        y: r.top + r.height * 0.35,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: -(0.5 + Math.random() * 1.1),
+        life: 1,
+        decay: 0.012 + Math.random() * 0.014,
+        size: 0.7 + Math.random() * 1.4,
+        hue: 24 + Math.random() * 22,
+        lit: 58 + Math.random() * 20,
+        drift: Math.random() * Math.PI * 2,
+        flicker: true
+      });
+    }
+  }
+
   /* ---------------- burst presets ---------------- */
 
   var presets = {
@@ -180,6 +203,7 @@
       lastSpawn = now;
       spawnEmber();
       if (Math.random() < 0.4) spawnEmber();
+      spawnTorchSparks();
     }
 
     ctx2d.globalCompositeOperation = 'lighter';
