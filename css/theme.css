@@ -169,6 +169,9 @@ button {
 .btn-icon:active { transform: translateY(2px); }
 .btn-icon.muted { color: #7d6749; text-decoration: line-through; }
 
+/* music toggle stacks above the sound-effects toggle */
+.btn-icon.music { bottom: 70px; }
+
 .hidden { display: none !important; }
 
 /* ---------------- wall torches ---------------- */

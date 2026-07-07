@@ -68,6 +68,17 @@
     soundBtn.addEventListener('click', function () { S.toggleMute(); paintSound(); });
     paintSound();
 
+    /* background music: starts on the first user gesture (autoplay policy) */
+    var M = global.Shield.music;
+    var musicBtn = $('btn-music');
+    function paintMusic() { musicBtn.classList.toggle('muted', M.isMuted()); }
+    musicBtn.addEventListener('click', function () { M.toggleMute(); paintMusic(); });
+    paintMusic();
+    document.addEventListener('pointerdown', function firstGesture() {
+      document.removeEventListener('pointerdown', firstGesture);
+      if (!M.isMuted()) M.start();
+    });
+
     /* debug hooks: ?debug=1&seed=42 */
     var params = new URLSearchParams(global.location.search);
     if (params.get('seed') !== null) E.seed = parseInt(params.get('seed'), 10);

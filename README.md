@@ -12,7 +12,10 @@ chunky parchment cards with playful, snappy animations. Pure HTML/CSS/JS — no 
   - **Netlify / Vercel:** drag-and-drop the folder or import the repo. No build command,
     output directory is the repo root.
 
-Sound can be toggled with the ♪ button (bottom-right); the preference is remembered.
+Epic medieval background music starts with your first click — toggle it with the ♬
+button (bottom-right), and sound effects with the ♪ button below it. Both
+preferences are remembered. All audio is synthesized live with WebAudio — the game
+ships zero sound files.
 
 ## Rules
 
@@ -62,6 +65,7 @@ js/ui.js          rendering + event→animation playback
 js/anim.js        Web-Animations-API toolkit (flips, flights, shakes, floats)
 js/particles.js   canvas embers & burst effects
 js/sound.js       WebAudio-synthesized sound effects (no audio files)
+js/music.js       procedural medieval background music (drone, harp, horn, drums)
 test/test.html    logic test suite — open in a browser, or: node test/tests.js
 ```
 
