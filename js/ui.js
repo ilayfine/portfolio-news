@@ -120,6 +120,16 @@
     return el;
   }
 
+  /* commit a card into the sideways shield slot with a springy quarter-turn */
+  function commitShieldCard(slotEl, card) {
+    var el = putCardInSlot(slotEl, card);
+    A.animate(el, [
+      { transform: 'translate(-50%, -50%) rotate(0deg)' },
+      { transform: 'translate(-50%, -50%) rotate(90deg)' }
+    ], { duration: 280, easing: 'cubic-bezier(0.22, 1.3, 0.36, 1)', autoCancel: true });
+    return el;
+  }
+
   function renderLifeRow(player) {
     var row = lifeRow(player.id);
     row.innerHTML = '';
@@ -250,7 +260,8 @@
       var flip = A.wait(90).then(function () { return A.flipInner(ghost, 180, 0, A.D.flip); });
       return Promise.all([fly, flip]);
     }).then(function () {
-      putCardInSlot(slotEl, card);
+      if (slotEl.classList.contains('shield-slot')) commitShieldCard(slotEl, card);
+      else putCardInSlot(slotEl, card);
       ghost.remove();
     });
   }
@@ -748,13 +759,13 @@
       : Promise.resolve();
 
     return Promise.all([out, inFly]).then(function () {
-      var el = putCardInSlot(slotEl, ev.newCard);
+      commitShieldCard(slotEl, ev.newCard);
       S.play('block');
       log(state.players[ev.byId].name + ' reforges ' + state.players[ev.playerId].name +
         "'s shield: " + ev.oldCard.label + ' → ' + ev.newCard.label + '.');
       var c = A.center(A.rect(slotEl));
       P.burst(c.x, c.y, 'block');
-      return Promise.all([A.popIn(el), A.flashSlot(slotEl, '#bcdcf5', 0.8)]);
+      return A.flashSlot(slotEl, '#bcdcf5', 0.8);
     });
   }
 

@@ -29,7 +29,16 @@
   pointer-events: none;
 }
 
-.shield-slot .slot-tag { color: #9fd0ff; }
+/* pinned plaque on the frame edge so the life row below can't clip it */
+.shield-slot .slot-tag {
+  color: #9fd0ff;
+  bottom: -0.6rem;
+  z-index: 6;
+  padding: 1px 7px 2px;
+  background: rgba(30, 18, 11, 0.92);
+  border: 1px solid rgba(79, 157, 240, 0.45);
+  border-radius: 7px;
+}
 
 /* the shield lies SIDEWAYS above the life row: horizontal box, rotated card */
 .shield-slot {
@@ -45,16 +54,6 @@
   border: 3px solid rgba(79, 157, 240, 0.65);
   box-shadow: 0 3px 0 rgba(15, 8, 4, 0.3), inset 0 0 10px rgba(79, 157, 240, 0.18);
   pointer-events: none;
-}
-
-.shield-slot > .card {
-  position: absolute;
-  inset: auto;
-  left: 50%;
-  top: 50%;
-  width: var(--card-w);
-  height: var(--card-h);
-  animation: shieldIdle 3.4s ease-in-out infinite;
 }
 
 /* ---------------- charge stack (hidden, face-down cards) ---------------- */
@@ -326,6 +325,24 @@
 .slot > .card:hover {
   animation: none;
   transform: translateY(-4px) rotate(-2deg) scale(1.06);
+  transition: transform 0.16s cubic-bezier(.34,1.56,.64,1);
+}
+
+/* the shield card lies SIDEWAYS in its horizontal slot.
+ * Placed after (and more specific than) the generic .slot > .card rules so the
+ * 90° rotation actually wins. */
+.slot.shield-slot > .card {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  /* base rotation so the card stays sideways even without the idle animation */
+  transform: translate(-50%, -50%) rotate(90deg);
+  animation: shieldIdle 3.4s ease-in-out infinite;
+}
+
+.slot.shield-slot > .card:hover {
+  animation: none;
+  transform: translate(-50%, calc(-50% - 3px)) rotate(88deg) scale(1.06);
   transition: transform 0.16s cubic-bezier(.34,1.56,.64,1);
 }
 
