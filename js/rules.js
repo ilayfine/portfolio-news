@@ -4,6 +4,19 @@
  *
  * Every mutating action returns an ordered list of events — the "script"
  * that the UI plays back with animations.
+ *
+ * Core model:
+ * - 54-card deck (52 + 2 jokers). Jokers are excluded from the initial deal.
+ * - A player's life is a list of slots {card, value, pending}. Damage reduces
+ *   the LOWEST-value slot first: the card is swapped for one of the new value
+ *   from the burnt pile if available, otherwise it is marked pending ("red
+ *   cross") and swaps automatically once such a card reaches the burnt pile.
+ * - Charges stack, stay hidden until an attack reveals them, and are all lost
+ *   when the holder takes life damage.
+ * - Any draw that turns up a joker grants the acting player an extra life
+ *   card, then the draw continues for its original purpose.
+ * - Gamble: guess red/black on the next card — right adds it to your life,
+ *   wrong kills you on the spot.
  */
 (function (global) {
   'use strict';
@@ -42,7 +55,20 @@
       id: SUIT_LETTER[suit] + rank,
       label: rankLabel(rank),
       glyph: SUIT_GLYPH[suit],
-      red: suit === 'hearts' || suit === 'diamonds'
+      red: suit === 'hearts' || suit === 'diamonds',
+      joker: false
+    };
+  }
+
+  function makeJoker(n) {
+    return {
+      rank: 0,
+      suit: 'joker',
+      id: 'X' + n,
+      label: '★',
+      glyph: '★',
+      red: false,
+      joker: true
     };
   }
 
@@ -53,8 +79,12 @@
         deck.push(makeCard(r, SUITS[s]));
       }
     }
+    deck.push(makeJoker(1));
+    deck.push(makeJoker(2));
     return deck;
   }
+
+  var DECK_SIZE = 54;
 
   function shuffle(arr, rng) {
     for (var i = arr.length - 1; i > 0; i--) {
@@ -66,8 +96,14 @@
 
   /* ---------------- Players & state ---------------- */
 
+  function lifeSlot(card) {
+    return { card: card, value: card.rank, pending: false };
+  }
+
   function hp(player) {
-    return player.health[0].rank + player.health[1].rank - player.damage;
+    var sum = 0;
+    for (var i = 0; i < player.health.length; i++) sum += player.health[i].value;
+    return sum;
   }
 
   function alivePlayers(state) {
@@ -81,17 +117,21 @@
   function newGame(names, seed) {
     var rng = makeRng(seed);
     var deck = shuffle(buildDeck(), rng);
+    // jokers sit out of the initial deal, then get shuffled back in
+    var jokers = deck.filter(function (c) { return c.joker; });
+    deck = deck.filter(function (c) { return !c.joker; });
     var players = names.map(function (name, i) {
       return {
         id: i,
         name: name,
         shield: deck.pop(),
-        health: [deck.pop(), deck.pop()],
-        damage: 0,
-        charge: null,
+        health: [lifeSlot(deck.pop()), lifeSlot(deck.pop())],
+        charge: [],          // stack of hidden charge cards
         eliminated: false
       };
     });
+    deck.push(jokers[0], jokers[1]);
+    shuffle(deck, rng);
     return {
       players: players,
       deck: deck,
@@ -103,31 +143,54 @@
     };
   }
 
-  /* Single draw choke point: reshuffles discard into deck when empty. */
-  function draw(state, events, purpose) {
-    if (state.deck.length === 0) {
-      if (state.discard.length === 0) {
-        throw new Error('Shield: deck and discard both empty — impossible with a 52-card deck');
+  /* Single draw choke point.
+   * - Reshuffles the burnt pile into the deck when empty.
+   * - A joker grants `beneficiaryId` an extra life card, then the draw
+   *   continues for its original purpose (jokers can chain).
+   * Returns a non-joker card.
+   */
+  function draw(state, events, purpose, beneficiaryId) {
+    for (;;) {
+      if (state.deck.length === 0) {
+        if (state.discard.length === 0) {
+          throw new Error('Shield: deck and discard both empty');
+        }
+        state.deck = shuffle(state.discard, state.rng);
+        state.discard = [];
+        events.push({ type: 'reshuffle', count: state.deck.length });
       }
-      state.deck = shuffle(state.discard, state.rng);
-      state.discard = [];
-      events.push({ type: 'reshuffle', count: state.deck.length });
+      var card = state.deck.pop();
+      if (card.joker && beneficiaryId !== undefined && beneficiaryId !== null) {
+        state.discard.push(card);
+        events.push({ type: 'jokerDrawn', card: card, playerId: beneficiaryId, purpose: purpose });
+        var lifeCard = draw(state, events, 'life', beneficiaryId); // recursion handles joker chains
+        addLifeCard(state, beneficiaryId, lifeCard, events);
+        continue; // redraw for the original purpose
+      }
+      events.push({ type: 'draw', card: card, purpose: purpose });
+      return card;
     }
-    var card = state.deck.pop();
-    events.push({ type: 'draw', card: card, purpose: purpose });
-    return card;
   }
 
-  function checkElimination(state, player, events) {
-    if (!player.eliminated && hp(player) <= 0) {
-      player.eliminated = true;
-      if (player.charge) {
-        state.discard.push(player.charge);
-        events.push({ type: 'chargeLost', playerId: player.id, card: player.charge });
-        player.charge = null;
-      }
-      events.push({ type: 'eliminated', playerId: player.id });
-    }
+  function addLifeCard(state, playerId, card, events) {
+    var p = state.players[playerId];
+    p.health.push(lifeSlot(card));
+    events.push({ type: 'lifeGained', playerId: playerId, card: card, newHp: hp(p) });
+  }
+
+  function loseCharges(state, player, events, reason) {
+    if (!player.charge.length) return;
+    var cards = player.charge;
+    player.charge = [];
+    for (var i = 0; i < cards.length; i++) state.discard.push(cards[i]);
+    events.push({ type: 'chargesLost', playerId: player.id, cards: cards, reason: reason });
+  }
+
+  function eliminate(state, player, events) {
+    if (player.eliminated) return;
+    player.eliminated = true;
+    loseCharges(state, player, events, 'eliminated');
+    events.push({ type: 'eliminated', playerId: player.id });
   }
 
   function checkWin(state, events) {
@@ -135,6 +198,108 @@
     if (alive.length === 1 && state.winnerId === null) {
       state.winnerId = alive[0].id;
       events.push({ type: 'win', playerId: alive[0].id });
+    }
+  }
+
+  /* find a non-joker card of the given rank in the burnt pile */
+  function takeFromDiscard(state, rank) {
+    for (var i = 0; i < state.discard.length; i++) {
+      if (!state.discard[i].joker && state.discard[i].rank === rank) {
+        return state.discard.splice(i, 1)[0];
+      }
+    }
+    return null;
+  }
+
+  /* Damage cascade: hits the LOWEST-value life card first.
+   * A partially damaged card swaps to its new denomination (from the burnt
+   * pile if possible, else marked pending). A fully spent card is lost.
+   * Taking any life damage also burns all held charges.
+   */
+  function applyDamage(state, target, amount, events, byId) {
+    if (amount <= 0) return;
+    loseCharges(state, target, events, 'hit');
+    events.push({
+      type: 'damage',
+      playerId: target.id,
+      amount: amount,
+      newHp: Math.max(hp(target) - amount, 0),
+      byId: byId
+    });
+    var remaining = amount;
+    while (remaining > 0 && target.health.length) {
+      var idx = 0;
+      for (var i = 1; i < target.health.length; i++) {
+        if (target.health[i].value < target.health[idx].value) idx = i;
+      }
+      var slot = target.health[idx];
+      if (remaining >= slot.value) {
+        remaining -= slot.value;
+        target.health.splice(idx, 1);
+        state.discard.push(slot.card);
+        events.push({ type: 'lifeCardLost', playerId: target.id, index: idx, card: slot.card });
+      } else {
+        var newValue = slot.value - remaining;
+        remaining = 0;
+        var oldCard = slot.card;
+        var swap = takeFromDiscard(state, newValue);
+        if (swap) {
+          slot.card = swap;
+          slot.value = newValue;
+          slot.pending = false;
+          state.discard.push(oldCard);
+        } else {
+          slot.value = newValue;
+          slot.pending = true;
+        }
+        events.push({
+          type: 'lifeCardDown',
+          playerId: target.id,
+          index: idx,
+          oldCard: oldCard,
+          newValue: newValue,
+          newCard: swap,
+          pending: !swap
+        });
+      }
+    }
+    if (!target.health.length) {
+      eliminate(state, target, events);
+      checkWin(state, events);
+    }
+  }
+
+  /* Sweep all pending ("red cross") life cards: once the burnt pile holds a
+   * card of the owed denomination, swap it in. Swapping releases the old card
+   * to the pile, which can satisfy further pendings — loop until stable.
+   */
+  function resolvePendingSwaps(state, events) {
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (var p = 0; p < state.players.length; p++) {
+        var player = state.players[p];
+        if (player.eliminated) continue;
+        for (var i = 0; i < player.health.length; i++) {
+          var slot = player.health[i];
+          if (!slot.pending) continue;
+          var swap = takeFromDiscard(state, slot.value);
+          if (swap) {
+            var oldCard = slot.card;
+            slot.card = swap;
+            slot.pending = false;
+            state.discard.push(oldCard);
+            events.push({
+              type: 'pendingResolved',
+              playerId: player.id,
+              index: i,
+              oldCard: oldCard,
+              newCard: swap
+            });
+            changed = true;
+          }
+        }
+      }
     }
   }
 
@@ -146,7 +311,8 @@
     return {
       attack: others.map(function (p) { return p.id; }),
       changeShield: alivePlayers(state).map(function (p) { return p.id; }),
-      charge: !me.charge
+      charge: true,
+      gamble: true
     };
   }
 
@@ -158,14 +324,13 @@
       throw new Error('Shield: illegal attack target ' + targetId);
     }
 
-    var drawn = draw(state, events, 'attack');
+    var drawn = draw(state, events, 'attack', attacker.id);
     var value = drawn.rank;
-    var chargeCard = null;
-    if (attacker.charge) {
-      chargeCard = attacker.charge;
-      attacker.charge = null;
-      value += chargeCard.rank;
-      events.push({ type: 'chargeConsumed', playerId: attacker.id, card: chargeCard, total: value });
+    var charges = attacker.charge;
+    if (charges.length) {
+      for (var i = 0; i < charges.length; i++) value += charges[i].rank;
+      attacker.charge = [];
+      events.push({ type: 'chargesRevealed', playerId: attacker.id, cards: charges, total: value });
     }
 
     events.push({
@@ -173,54 +338,55 @@
       attackerId: attacker.id,
       targetId: target.id,
       card: drawn,
-      chargeCard: chargeCard,
+      chargeCards: charges,
       value: value,
       shield: target.shield.rank
     });
 
     state.discard.push(drawn);
-    if (chargeCard) state.discard.push(chargeCard);
+    for (var c = 0; c < charges.length; c++) state.discard.push(charges[c]);
 
     if (value > target.shield.rank) {
-      var dmg = value - target.shield.rank;
-      target.damage += dmg;
-      events.push({ type: 'damage', playerId: target.id, amount: dmg, newHp: hp(target), byId: attacker.id });
-      checkElimination(state, target, events);
-      checkWin(state, events);
+      applyDamage(state, target, value - target.shield.rank, events, attacker.id);
     } else {
       state.pending = { type: 'counter', attackerId: attacker.id, defenderId: target.id };
       events.push({ type: 'blocked', attackerId: attacker.id, defenderId: target.id, value: value, shield: target.shield.rank });
       events.push({ type: 'counterRequired', attackerId: attacker.id, defenderId: target.id });
     }
+    resolvePendingSwaps(state, events);
     return events;
   }
 
-  /* Defender picked which of the attacker's health cards (slot 0|1) to scramble. */
-  function resolveCounter(state, slot) {
+  /* Defender picked which of the attacker's life cards (by index) to scramble.
+   * A joker on this draw benefits the DEFENDER (the one performing it). */
+  function resolveCounter(state, index) {
     if (!state.pending || state.pending.type !== 'counter') {
       throw new Error('Shield: no counter pending');
     }
     var pending = state.pending;
     state.pending = null;
     var attacker = state.players[pending.attackerId];
+    if (index < 0 || index >= attacker.health.length) {
+      throw new Error('Shield: bad counter index ' + index);
+    }
     var events = [];
-    var oldCard = attacker.health[slot];
+    var oldSlot = attacker.health[index];
     var oldHp = hp(attacker);
-    var drawn = draw(state, events, 'health');
-    attacker.health[slot] = drawn;
-    state.discard.push(oldCard);
+    var drawn = draw(state, events, 'health', pending.defenderId);
+    attacker.health[index] = lifeSlot(drawn);
+    state.discard.push(oldSlot.card);
     events.push({
       type: 'healthReplaced',
       playerId: attacker.id,
-      slot: slot,
-      oldCard: oldCard,
+      index: index,
+      oldCard: oldSlot.card,
+      oldValue: oldSlot.value,
       newCard: drawn,
       oldHp: oldHp,
       newHp: hp(attacker),
       byId: pending.defenderId
     });
-    checkElimination(state, attacker, events);
-    checkWin(state, events);
+    resolvePendingSwaps(state, events);
     return events;
   }
 
@@ -228,7 +394,8 @@
     var target = state.players[targetId];
     if (target.eliminated) throw new Error('Shield: illegal shield target ' + targetId);
     var events = [];
-    var drawn = draw(state, events, 'shield');
+    var actor = currentPlayer(state);
+    var drawn = draw(state, events, 'shield', actor.id);
     var oldCard = target.shield;
     target.shield = drawn;
     state.discard.push(oldCard);
@@ -237,18 +404,43 @@
       playerId: target.id,
       oldCard: oldCard,
       newCard: drawn,
-      byId: currentPlayer(state).id
+      byId: actor.id
     });
+    resolvePendingSwaps(state, events);
     return events;
   }
 
   function resolveCharge(state) {
     var me = currentPlayer(state);
-    if (me.charge) throw new Error('Shield: charge slot already full');
     var events = [];
-    var drawn = draw(state, events, 'charge');
-    me.charge = drawn;
-    events.push({ type: 'charged', playerId: me.id, card: drawn });
+    var drawn = draw(state, events, 'charge', me.id);
+    me.charge.push(drawn);
+    events.push({ type: 'charged', playerId: me.id, card: drawn, count: me.charge.length });
+    resolvePendingSwaps(state, events);
+    return events;
+  }
+
+  /* Gamble on the life: guess 'red' or 'black' for the next card.
+   * Right: the card joins your life. Wrong: you die on the spot.
+   * A joker still grants its extra life first, then the NEXT card decides
+   * (the color pick cannot change mid-gamble). */
+  function resolveGamble(state, guess) {
+    if (guess !== 'red' && guess !== 'black') throw new Error('Shield: bad guess ' + guess);
+    var me = currentPlayer(state);
+    var events = [];
+    events.push({ type: 'gamble', playerId: me.id, guess: guess });
+    var card = draw(state, events, 'gamble', me.id);
+    var win = (card.red ? 'red' : 'black') === guess;
+    if (win) {
+      me.health.push(lifeSlot(card));
+      events.push({ type: 'gambleResult', playerId: me.id, card: card, guess: guess, win: true, newHp: hp(me) });
+    } else {
+      state.discard.push(card);
+      events.push({ type: 'gambleResult', playerId: me.id, card: card, guess: guess, win: false });
+      eliminate(state, me, events);
+      checkWin(state, events);
+    }
+    resolvePendingSwaps(state, events);
     return events;
   }
 
@@ -266,7 +458,8 @@
     throw new Error('Shield: no living players to advance to');
   }
 
-  /* Test/debug helper: move a card with the given rank to the top of the deck. */
+  /* Test/debug helper: move a card with the given rank (0 = joker) to the top
+   * of the deck. */
   function forceNextDraw(state, rank) {
     for (var i = state.deck.length - 1; i >= 0; i--) {
       if (state.deck[i].rank === rank) {
@@ -282,8 +475,9 @@
   function countAllCards(state) {
     var n = state.deck.length + state.discard.length;
     state.players.forEach(function (p) {
-      n += 3;
-      if (p.charge) n += 1;
+      n += 1;                    // shield
+      n += p.health.length;      // life cards (incl. pending/red-cross ones)
+      n += p.charge.length;      // hidden charges
     });
     return n;
   }
@@ -291,10 +485,13 @@
   global.Shield = global.Shield || {};
   global.Shield.rules = {
     SUITS: SUITS,
+    DECK_SIZE: DECK_SIZE,
     makeCard: makeCard,
+    makeJoker: makeJoker,
     buildDeck: buildDeck,
     makeRng: makeRng,
     rankLabel: rankLabel,
+    lifeSlot: lifeSlot,
     hp: hp,
     alivePlayers: alivePlayers,
     currentPlayer: currentPlayer,
@@ -304,6 +501,7 @@
     resolveCounter: resolveCounter,
     resolveChangeShield: resolveChangeShield,
     resolveCharge: resolveCharge,
+    resolveGamble: resolveGamble,
     advanceTurn: advanceTurn,
     forceNextDraw: forceNextDraw,
     countAllCards: countAllCards

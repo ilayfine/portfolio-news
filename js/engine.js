@@ -58,6 +58,23 @@
         if (!la.charge) return;
         var state = this.state;
         this.resolve(function () { return R.resolveCharge(state); });
+      } else if (kind === 'gamble') {
+        if (!la.gamble) return;
+        this.phase = 'GAMBLE_CONFIRM';
+        UI.lockActions();
+        UI.gambleConfirm(function () {
+          if (self.phase !== 'GAMBLE_CONFIRM') return;
+          self.phase = 'GAMBLE_COLOR';
+          UI.gambleColor(function (guess) {
+            if (self.phase !== 'GAMBLE_COLOR') return;
+            var st = self.state;
+            self.resolve(function () { return R.resolveGamble(st, guess); });
+          });
+        }, function () {
+          if (self.phase !== 'GAMBLE_CONFIRM') return;
+          self.phase = 'CHOOSE_ACTION';
+          UI.unlockActions(self.state);
+        });
       }
     },
 
@@ -104,12 +121,12 @@
       await this.endTurn();
     },
 
-    async counterPicked(slot) {
+    async counterPicked(index) {
       if (this.phase !== 'COUNTER_PICK') return;
       this.phase = 'RESOLVING';
       UI.exitTargetMode();
       UI.lockActions();
-      var events = R.resolveCounter(this.state, slot);
+      var events = R.resolveCounter(this.state, index);
       for (var i = 0; i < events.length; i++) {
         await UI.playEvent(events[i], this.state);
       }

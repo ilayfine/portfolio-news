@@ -48,6 +48,7 @@
     $('btn-attack').addEventListener('click', function () { E.chooseAction('attack'); });
     $('btn-shield').addEventListener('click', function () { E.chooseAction('shield'); });
     $('btn-charge').addEventListener('click', function () { E.chooseAction('charge'); });
+    $('btn-gamble').addEventListener('click', function () { E.chooseAction('gamble'); });
     $('btn-cancel').addEventListener('click', function () { S.play('click'); E.cancelTarget(); });
 
     /* victory */

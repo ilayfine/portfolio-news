@@ -1,6 +1,10 @@
 /* SHIELD — ui.js
- * DOM rendering, screen management, target selection, and the mapping from
- * rules events to animation sequences (playEvent).
+ * DOM rendering, screen management, target selection, the gamble modal, and
+ * the mapping from rules events to animation sequences (playEvent).
+ *
+ * The DOM is updated incrementally, event by event, so the table always shows
+ * the state as it was at that point of the playback (life rows grow/shrink,
+ * cards swap denominations, charges stack face-down, etc.).
  */
 (function (global) {
   'use strict';
@@ -13,7 +17,7 @@
   var ACCENTS = ['#e2504c', '#4ea8de', '#e9b44c', '#52b788'];
   var DEFAULT_NAMES = ['Aria', 'Borin', 'Cyra', 'Dorn'];
 
-  var stageCards = []; // ghosts currently sitting on the center stage: {card, el}
+  var stageCards = []; // ghosts currently sitting on the center stage: {card, el, rect}
   var targetCleanup = null;
 
   function $(id) { return document.getElementById(id); }
@@ -32,18 +36,30 @@
 
   function cardEl(card, faceUp) {
     var el = document.createElement('div');
-    el.className = 'card ' + (card.red ? 'red' : 'black') + (faceUp === false ? ' face-down' : '');
+    var color = card.joker ? 'joker' : (card.red ? 'red' : 'black');
+    el.className = 'card ' + color + (faceUp === false ? ' face-down' : '');
     el.dataset.cardId = card.id;
-    el.innerHTML =
-      '<div class="card-inner">' +
-        '<div class="face">' +
-          '<span class="corner tl"><b>' + card.label + '</b><i>' + card.glyph + '</i></span>' +
-          '<span class="rank-big">' + card.label + '</span>' +
-          '<span class="suit-big">' + card.glyph + '</span>' +
-          '<span class="corner br"><b>' + card.label + '</b><i>' + card.glyph + '</i></span>' +
-        '</div>' +
-        '<div class="back"></div>' +
-      '</div>';
+    if (card.joker) {
+      el.innerHTML =
+        '<div class="card-inner">' +
+          '<div class="face joker-face">' +
+            '<span class="joker-star">★</span>' +
+            '<span class="joker-word">JOKER</span>' +
+          '</div>' +
+          '<div class="back"></div>' +
+        '</div>';
+    } else {
+      el.innerHTML =
+        '<div class="card-inner">' +
+          '<div class="face">' +
+            '<span class="corner tl"><b>' + card.label + '</b><i>' + card.glyph + '</i></span>' +
+            '<span class="rank-big">' + card.label + '</span>' +
+            '<span class="suit-big">' + card.glyph + '</span>' +
+            '<span class="corner br"><b>' + card.label + '</b><i>' + card.glyph + '</i></span>' +
+          '</div>' +
+          '<div class="back"></div>' +
+        '</div>';
+    }
     return el;
   }
 
@@ -56,55 +72,44 @@
 
   /* ---------------- table construction ---------------- */
 
-  function slotIds(playerId) {
-    return {
-      shield: 'slot-shield-' + playerId,
-      health0: 'slot-health-' + playerId + '-0',
-      health1: 'slot-health-' + playerId + '-1',
-      charge: 'slot-charge-' + playerId
-    };
+  function shieldSlot(pid) { return $('slot-shield-' + pid); }
+
+  /* flight target for a slot: the shield slot is a sideways box, so aim a
+   * portrait-card rect at its center to avoid distorting the flying ghost */
+  function slotTargetRect(slotEl) {
+    var r = A.rect(slotEl);
+    if (slotEl.classList.contains('shield-slot')) {
+      var w = r.height, h = r.width;
+      return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h };
+    }
+    return r;
+  }
+  function lifeRow(pid) { return $('life-row-' + pid); }
+  function lifeSlotAt(pid, index) { return lifeRow(pid).children[index] || null; }
+  function chargeStack(pid) { return $('charge-' + pid); }
+
+  function makeLifeSlot() {
+    var slot = document.createElement('div');
+    slot.className = 'slot health-slot';
+    return slot;
   }
 
-  function healthSlot(playerId, slot) { return $('slot-health-' + playerId + '-' + slot); }
-
-  function buildTable(state) {
-    var arena = $('arena');
-    arena.className = 'players-' + state.players.length;
-    arena.classList.remove('dimmed');
-    // remove old zones
-    var old = arena.querySelectorAll('.player-zone');
-    for (var i = 0; i < old.length; i++) old[i].remove();
-
-    state.players.forEach(function (p) {
-      var ids = slotIds(p.id);
-      var zone = document.createElement('div');
-      zone.className = 'player-zone';
-      zone.id = 'zone-' + p.id;
-      zone.dataset.playerId = p.id;
-      zone.style.setProperty('--accent', accent(p.id));
-      zone.innerHTML =
-        '<div class="plate">' +
-          '<span class="pname">' + escapeHtml(p.name) + '</span>' +
-          '<div class="hp-orb" id="hp-' + p.id + '"><span class="hp-num">0</span></div>' +
-        '</div>' +
-        '<div class="zone-cards">' +
-          '<div class="slot shield-slot" id="' + ids.shield + '"><span class="slot-tag">SHIELD</span></div>' +
-          '<div class="slot health-slot" id="' + ids.health0 + '" data-player="' + p.id + '" data-slot="0"><span class="slot-tag">LIFE</span></div>' +
-          '<div class="slot health-slot" id="' + ids.health1 + '" data-player="' + p.id + '" data-slot="1"><span class="slot-tag">LIFE</span></div>' +
-          '<div class="slot charge-slot" id="' + ids.charge + '"><span class="slot-tag">CHARGE</span></div>' +
-        '</div>' +
-        '<div class="slain-stamp">SLAIN</div>';
-      arena.appendChild(zone);
-    });
-
-    setDiscardTop(null);
-    updateDeckCount(state);
-    stageCards = [];
-    $('log').innerHTML = '';
+  /* stamp/refresh the pending "red cross owes a value" look on a life slot */
+  function paintPending(slotEl, value) {
+    slotEl.classList.add('pending');
+    var owe = slotEl.querySelector('.owe');
+    if (!owe) {
+      owe = document.createElement('div');
+      owe.className = 'owe';
+      slotEl.appendChild(owe);
+    }
+    owe.textContent = value;
   }
 
-  function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function clearPending(slotEl) {
+    slotEl.classList.remove('pending');
+    var owe = slotEl.querySelector('.owe');
+    if (owe) owe.remove();
   }
 
   function putCardInSlot(slotEl, card) {
@@ -115,21 +120,95 @@
     return el;
   }
 
-  function setChargeSlot(playerId, card) {
-    var slot = $('slot-charge-' + playerId);
-    var oldCard = slot.querySelector('.card');
-    if (oldCard) oldCard.remove();
-    var oldAura = slot.querySelector('.charge-aura');
-    if (oldAura) oldAura.remove();
-    if (card) {
-      slot.classList.add('filled');
-      var aura = document.createElement('div');
-      aura.className = 'charge-aura';
-      slot.appendChild(aura);
-      slot.appendChild(cardEl(card, true));
-    } else {
-      slot.classList.remove('filled');
+  function renderLifeRow(player) {
+    var row = lifeRow(player.id);
+    row.innerHTML = '';
+    player.health.forEach(function (slot) {
+      var slotEl = makeLifeSlot();
+      slotEl.appendChild(cardEl(slot.card, true));
+      if (slot.pending) paintPending(slotEl, slot.value);
+      row.appendChild(slotEl);
+    });
+  }
+
+  function renderChargeStack(player) {
+    var wrap = chargeStack(player.id);
+    var cardsBox = wrap.querySelector('.cs-cards');
+    var count = wrap.querySelector('.cs-count');
+    cardsBox.innerHTML = '';
+    var n = player.charge.length;
+    for (var i = 0; i < Math.min(n, 3); i++) {
+      var mini = document.createElement('div');
+      mini.className = 'card mini back-only';
+      mini.style.setProperty('--stack-i', i);
+      cardsBox.appendChild(mini);
     }
+    wrap.classList.toggle('filled', n > 0);
+    count.textContent = n;
+    count.classList.toggle('hidden', n === 0);
+  }
+
+  function setChargeCount(pid, n) {
+    renderChargeStack({ id: pid, charge: new Array(n) });
+  }
+
+  function buildTable(state) {
+    var arena = $('arena');
+    arena.className = 'players-' + state.players.length;
+    arena.classList.remove('dimmed');
+    var old = arena.querySelectorAll('.player-zone');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+
+    state.players.forEach(function (p) {
+      var zone = document.createElement('div');
+      zone.className = 'player-zone';
+      zone.id = 'zone-' + p.id;
+      zone.dataset.playerId = p.id;
+      zone.style.setProperty('--accent', accent(p.id));
+      zone.innerHTML =
+        '<div class="plate">' +
+          '<span class="pname">' + escapeHtml(p.name) + '</span>' +
+          '<div class="hp-orb" id="hp-' + p.id + '"><span class="hp-num">0</span></div>' +
+        '</div>' +
+        '<div class="slot shield-slot" id="slot-shield-' + p.id + '"><span class="slot-tag">SHIELD</span></div>' +
+        '<div class="zone-body">' +
+          '<div class="zone-cards" id="life-row-' + p.id + '"></div>' +
+          '<div class="charge-stack" id="charge-' + p.id + '">' +
+            '<div class="cs-cards"></div>' +
+            '<span class="cs-count hidden">0</span>' +
+            '<span class="slot-tag">CHARGE</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="slain-stamp">SLAIN</div>';
+      arena.appendChild(zone);
+      // empty life slots for the deal to fill
+      var row = lifeRow(p.id);
+      p.health.forEach(function () { row.appendChild(makeLifeSlot()); });
+      renderChargeStack(p);
+    });
+
+    setDiscardTop(null);
+    updateDeckCount(state);
+    stageCards = [];
+    $('log').innerHTML = '';
+  }
+
+  /* re-sync every zone from state (debug/tests) */
+  function syncAll(state) {
+    state.players.forEach(function (p) {
+      putCardInSlot(shieldSlot(p.id), p.shield);
+      renderLifeRow(p);
+      renderChargeStack(p);
+      updateHpTo(p.id, R.hp(p), false);
+      var zone = $('zone-' + p.id);
+      zone.classList.toggle('eliminated', p.eliminated);
+    });
+    updateDeckCount(state);
+    setDiscardTop(state.discard.length ? state.discard[state.discard.length - 1] : null);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   function setDiscardTop(card) {
@@ -143,12 +222,12 @@
     $('deck-count').textContent = state.deck.length;
   }
 
-  function updateHp(player, animateIt) {
-    var orb = $('hp-' + player.id);
+  function updateHpTo(playerId, value, animateIt) {
+    var orb = $('hp-' + playerId);
     if (!orb) return Promise.resolve();
     var numEl = orb.querySelector('.hp-num');
     var from = parseInt(numEl.textContent, 10) || 0;
-    var to = Math.max(R.hp(player), 0);
+    var to = Math.max(value, 0);
     if (!animateIt) { numEl.textContent = String(to); return Promise.resolve(); }
     A.pulse(orb, 1.28);
     return A.countTo(numEl, from, to);
@@ -156,9 +235,9 @@
 
   /* ---------------- deal ---------------- */
 
-  function dealOne(state, card, slotEl, delay) {
+  function dealOne(card, slotEl, delay) {
     var from = A.rect($('deck'));
-    var to = A.rect(slotEl);
+    var to = slotTargetRect(slotEl);
     var ghost = ghostCard(card, false);
     var inner = ghost.querySelector('.card-inner');
     inner.style.transition = 'none';
@@ -180,13 +259,15 @@
     var jobs = [];
     var i = 0;
     state.players.forEach(function (p) {
-      var ids = slotIds(p.id);
-      jobs.push(dealOne(state, p.shield, $(ids.shield), i++ * A.D.dealStagger));
-      jobs.push(dealOne(state, p.health[0], $(ids.health0), i++ * A.D.dealStagger));
-      jobs.push(dealOne(state, p.health[1], $(ids.health1), i++ * A.D.dealStagger));
+      jobs.push(dealOne(p.shield, shieldSlot(p.id), i++ * A.D.dealStagger));
+      p.health.forEach(function (slot, idx) {
+        jobs.push(dealOne(slot.card, lifeSlotAt(p.id, idx), i++ * A.D.dealStagger));
+      });
     });
     return Promise.all(jobs).then(function () {
-      return Promise.all(state.players.map(function (p) { return updateHp(p, true); }));
+      return Promise.all(state.players.map(function (p) {
+        return updateHpTo(p.id, R.hp(p), true);
+      }));
     });
   }
 
@@ -214,13 +295,14 @@
   function unlockActions(state) {
     var la = R.legalActions(state);
     $('btn-attack').disabled = la.attack.length === 0;
-    $('btn-charge').disabled = !la.charge;
-    $('btn-charge').title = la.charge ? '' : 'A charge is already held';
     $('btn-shield').disabled = la.changeShield.length === 0;
+    $('btn-charge').disabled = !la.charge;
+    $('btn-gamble').disabled = !la.gamble;
     $('btn-cancel').classList.add('hidden');
     $('btn-attack').classList.remove('hidden');
     $('btn-shield').classList.remove('hidden');
     $('btn-charge').classList.remove('hidden');
+    $('btn-gamble').classList.remove('hidden');
     $('action-bar').classList.remove('locked');
   }
 
@@ -228,6 +310,7 @@
     $('btn-attack').classList.add('hidden');
     $('btn-shield').classList.add('hidden');
     $('btn-charge').classList.add('hidden');
+    $('btn-gamble').classList.add('hidden');
     $('btn-cancel').classList.remove('hidden');
     $('action-bar').classList.remove('locked');
   }
@@ -272,11 +355,11 @@
     attackerZone.style.setProperty('--target-color', col);
 
     var handlers = [];
-    [0, 1].forEach(function (slot) {
-      var slotEl = healthSlot(attackerId, slot);
+    var slots = lifeRow(attackerId).children;
+    Array.prototype.forEach.call(slots, function (slotEl, index) {
       slotEl.classList.add('targetable');
       slotEl.style.setProperty('--target-color', col);
-      var h = function (e) { e.stopPropagation(); S.play('click'); cb(slot); };
+      var h = function (e) { e.stopPropagation(); S.play('click'); cb(index); };
       slotEl.addEventListener('click', h);
       handlers.push({ el: slotEl, h: h });
     });
@@ -296,6 +379,45 @@
     if (targetCleanup) targetCleanup();
   }
 
+  /* ---------------- gamble modal ---------------- */
+
+  function showModal(question, buttons) {
+    var modal = $('modal');
+    $('modal-question').textContent = question;
+    var box = $('modal-buttons');
+    box.innerHTML = '';
+    buttons.forEach(function (b) {
+      var btn = document.createElement('button');
+      btn.className = 'btn modal-btn ' + (b.cls || '');
+      btn.innerHTML = b.html;
+      btn.addEventListener('click', function () {
+        S.play('click');
+        hideModal();
+        b.onPick();
+      });
+      box.appendChild(btn);
+    });
+    modal.classList.remove('hidden');
+  }
+
+  function hideModal() {
+    $('modal').classList.add('hidden');
+  }
+
+  function gambleConfirm(onYes, onNo) {
+    showModal('Do you want to gamble on the life?', [
+      { html: 'Yes — fate decides', cls: 'modal-yes', onPick: onYes },
+      { html: 'No, step back', cls: 'modal-no', onPick: onNo }
+    ]);
+  }
+
+  function gambleColor(onPick) {
+    showModal('Call the color of the next card', [
+      { html: '<span class="suits-red">♥ ♦</span> Red', cls: 'modal-red', onPick: function () { onPick('red'); } },
+      { html: '<span class="suits-black">♠ ♣</span> Black', cls: 'modal-black', onPick: function () { onPick('black'); } }
+    ]);
+  }
+
   /* ---------------- log ---------------- */
 
   function log(msg) {
@@ -312,13 +434,16 @@
   function stageRect(indexOffset) {
     var r = A.rect($('stage'));
     if (indexOffset) {
-      r = { left: r.left + indexOffset * r.width * 0.45, top: r.top - 6, width: r.width, height: r.height };
+      var off = Math.min(indexOffset, 4);
+      r = { left: r.left + off * r.width * 0.35, top: r.top - 6 - off * 3, width: r.width, height: r.height };
     }
     return r;
   }
 
+  /* deck -> stage. Cards drawn for a charge stay FACE DOWN (hidden charge). */
   function playDraw(ev, state) {
     updateDeckCount(state);
+    var hidden = ev.purpose === 'charge';
     var from = A.rect($('deck'));
     var to = stageRect(stageCards.length);
     var ghost = ghostCard(ev.card, false);
@@ -327,44 +452,109 @@
     inner.style.transform = 'rotateY(180deg)';
     S.play('draw');
     var fly = A.flyGhost(ghost, from, to, { duration: A.D.flyIn, rotFrom: -6, rotTo: 0, arc: 30 });
-    var flip = A.wait(A.D.flyIn * 0.35).then(function () {
+    var flip = hidden ? Promise.resolve() : A.wait(A.D.flyIn * 0.35).then(function () {
       S.play('flip');
       return A.flipInner(ghost, 180, 0, A.D.flip);
     });
-    stageCards.push({ card: ev.card, el: ghost, rect: to });
+    stageCards.push({ card: ev.card, el: ghost, rect: to, hidden: hidden });
+    var pause = ev.purpose === 'attack' ? 1 : ev.purpose === 'gamble' ? 1.4 : hidden ? 0.15 : 0.45;
     return Promise.all([fly, flip]).then(function () {
-      return A.wait(A.D.stagePause * (ev.purpose === 'attack' ? 1 : 0.45));
+      return A.wait(A.D.stagePause * pause);
     });
   }
 
-  function playChargeConsumed(ev) {
-    var slot = $('slot-charge-' + ev.playerId);
-    var from = A.rect(slot);
-    var to = stageRect(stageCards.length);
-    setChargeSlot(ev.playerId, null);
-    var ghost = ghostCard(ev.card, true);
-    stageCards.push({ card: ev.card, el: ghost, rect: to });
-    S.play('charge');
-    return A.flyGhost(ghost, from, to, { duration: 360, rotFrom: 0, rotTo: -8, arc: 20 })
-      .then(function () {
-        var c = A.center(stageRect(0.5));
-        P.burst(c.x, c.y, 'charge');
-        return A.floatText(c.x, c.y - 60, '⚔ ' + ev.total, 'info small', { duration: 800 });
-      });
+  function playJokerDrawn(ev, state) {
+    updateDeckCount(state);
+    var from = A.rect($('deck'));
+    var to = stageRect(0);
+    var ghost = ghostCard(ev.card, false);
+    var inner = ghost.querySelector('.card-inner');
+    inner.style.transition = 'none';
+    inner.style.transform = 'rotateY(180deg)';
+    S.play('draw');
+    var c = A.center(to);
+    return Promise.all([
+      A.flyGhost(ghost, from, to, { duration: A.D.flyIn, rotFrom: -6, rotTo: 0, arc: 30 }),
+      A.wait(A.D.flyIn * 0.35).then(function () { S.play('flip'); return A.flipInner(ghost, 180, 0, A.D.flip); })
+    ]).then(function () {
+      S.play('win');
+      P.burst(c.x, c.y, 'victory');
+      log(state.players[ev.playerId].name + ' finds a JOKER — an extra life card!');
+      return Promise.all([
+        A.floatText(c.x, c.y - 40, 'JOKER!', 'info'),
+        A.pulse(ghost, 1.18)
+      ]);
+    }).then(function () {
+      return A.flyGhost(ghost, A.rect(ghost), A.rect($('discard')), { duration: A.D.tumble, rotTo: 140 });
+    }).then(function () {
+      ghost.remove();
+      setDiscardTop(ev.card);
+    });
+  }
+
+  /* a freshly drawn card (waiting on the stage) joins a player's life row */
+  function flyStageCardToNewLifeSlot(playerId, card, newHp) {
+    var sc = stageCards.pop();
+    var row = lifeRow(playerId);
+    var slotEl = makeLifeSlot();
+    row.appendChild(slotEl); // row re-centers
+    var fly = sc
+      ? A.flyGhost(sc.el, A.rect(sc.el), A.rect(slotEl), { duration: 380, arc: 30 })
+          .then(function () { sc.el.remove(); })
+      : Promise.resolve();
+    return fly.then(function () {
+      var el = putCardInSlot(slotEl, card);
+      var c = A.center(A.rect(slotEl));
+      S.play('heal');
+      P.burst(c.x, c.y, 'heal');
+      return Promise.all([
+        A.popIn(el),
+        A.flashSlot(slotEl, '#5fe79b', 0.7),
+        newHp !== undefined ? updateHpTo(playerId, newHp, true) : Promise.resolve()
+      ]);
+    });
+  }
+
+  function playLifeGained(ev, state) {
+    return flyStageCardToNewLifeSlot(ev.playerId, ev.card, ev.newHp);
+  }
+
+  function playChargesRevealed(ev, state) {
+    var stackEl = chargeStack(ev.playerId);
+    var from = A.rect(stackEl);
+    setChargeCount(ev.playerId, 0);
+    var jobs = ev.cards.map(function (card, i) {
+      var to = stageRect(stageCards.length);
+      var ghost = ghostCard(card, false);
+      var inner = ghost.querySelector('.card-inner');
+      inner.style.transition = 'none';
+      inner.style.transform = 'rotateY(180deg)';
+      stageCards.push({ card: card, el: ghost, rect: to });
+      return A.flyGhost(ghost, from, to, { duration: 340, arc: 24, rotFrom: 0, rotTo: -6 + i * 4 })
+        .then(function () { S.play('flip'); return A.flipInner(ghost, 180, 0, A.D.flip); });
+    });
+    return Promise.all(jobs).then(function () {
+      var c = A.center(stageRect(1));
+      S.play('charge');
+      P.burst(c.x, c.y, 'charge');
+      log(state.players[ev.playerId].name + ' reveals ' + ev.cards.length +
+        ' hidden charge' + (ev.cards.length > 1 ? 's' : '') + '!');
+      return A.floatText(c.x, c.y - 60, '⚔ ' + ev.total, 'info', { duration: 850 });
+    });
   }
 
   function playAttack(ev, state) {
     setBanner('⚔ ' + state.players[ev.attackerId].name + ' strikes ' +
       state.players[ev.targetId].name + '!', accent(ev.attackerId));
-    var shieldSlotEl = $('slot-shield-' + ev.targetId);
+    var shieldSlotEl = shieldSlot(ev.targetId);
     var to = A.rect(shieldSlotEl);
     var flights = stageCards.map(function (sc, i) {
-      return A.flyGhost(sc.el, sc.rect, to, {
+      return A.flyGhost(sc.el, A.rect(sc.el), to, {
         duration: A.D.strike,
         rotFrom: 0,
         rotTo: 300 + i * 40,
         arc: 60,
-        easing: 'cubic-bezier(0.5, 0, 0.9, 0.4)' // accelerate into the target
+        easing: 'cubic-bezier(0.5, 0, 0.9, 0.4)'
       });
     });
     return Promise.all(flights);
@@ -375,21 +565,18 @@
     var jobs = stageCards.map(function (sc, i) {
       return A.flyGhost(sc.el, A.rect(sc.el), pile, {
         duration: A.D.tumble,
-        rotFrom: 0, rotTo: 160 + i * 30,
-        fadeOut: false
+        rotFrom: 0, rotTo: 160 + i * 30
       }).then(function () { sc.el.remove(); });
     });
-    var last = stageCards.length ? stageCards[stageCards.length - 1].card : null;
     stageCards = [];
     return Promise.all(jobs).then(function () {
       if (state.discard.length) setDiscardTop(state.discard[state.discard.length - 1]);
-      else if (last) setDiscardTop(last);
     });
   }
 
   function playDamage(ev, state) {
     var target = state.players[ev.playerId];
-    var shieldSlotEl = $('slot-shield-' + ev.playerId);
+    var shieldSlotEl = shieldSlot(ev.playerId);
     var c = A.center(A.rect(shieldSlotEl));
     S.play('hit', { power: ev.amount });
     P.burst(c.x, c.y, 'impact', ev.amount);
@@ -399,14 +586,14 @@
       A.shakeTable(3 + ev.amount * 0.8),
       A.flashSlot(shieldSlotEl, '#ff9a4a', 0.85),
       A.floatText(zoneC.x, zoneC.y - 20, '-' + ev.amount, 'damage'),
-      updateHp(target, true)
+      updateHpTo(ev.playerId, ev.newHp, true)
     ]).then(function () {
       return disposeStageToDiscard(state);
     });
   }
 
   function playBlocked(ev, state) {
-    var shieldSlotEl = $('slot-shield-' + ev.defenderId);
+    var shieldSlotEl = shieldSlot(ev.defenderId);
     var c = A.center(A.rect(shieldSlotEl));
     S.play('block');
     P.burst(c.x, c.y, 'block');
@@ -420,13 +607,92 @@
     ]).then(function () {
       return disposeStageToDiscard(state);
     }).then(function () {
-      return A.wait(180);
+      return A.wait(160);
     });
+  }
+
+  /* a life card is destroyed outright */
+  function playLifeCardLost(ev, state) {
+    var slotEl = lifeSlotAt(ev.playerId, ev.index);
+    if (!slotEl) return Promise.resolve();
+    var cardIn = slotEl.querySelector('.card');
+    var from = cardIn ? A.rect(cardIn) : A.rect(slotEl);
+    var ghost = ghostCard(ev.card, true);
+    slotEl.remove(); // row re-centers
+    var c = A.center(from);
+    P.burst(c.x, c.y, 'dissolve');
+    S.play('scramble');
+    return A.flyGhost(ghost, from, A.rect($('discard')), { duration: A.D.tumble, rotTo: 150 })
+      .then(function () {
+        ghost.remove();
+        setDiscardTop(ev.card);
+      });
+  }
+
+  /* a life card drops to a lower denomination */
+  function playLifeCardDown(ev, state) {
+    var slotEl = lifeSlotAt(ev.playerId, ev.index);
+    if (!slotEl) return Promise.resolve();
+    var c = A.center(A.rect(slotEl));
+    if (ev.newCard) {
+      // the burnt pile had the owed denomination: old card out, new card in
+      var cardIn = slotEl.querySelector('.card');
+      var oldGhost = ghostCard(ev.oldCard, true);
+      var from = cardIn ? A.rect(cardIn) : A.rect(slotEl);
+      if (cardIn) cardIn.remove();
+      clearPending(slotEl);
+      S.play('scramble');
+      var out = A.flyGhost(oldGhost, from, A.rect($('discard')), { duration: A.D.tumble, rotTo: 140 })
+        .then(function () { oldGhost.remove(); setDiscardTop(state.discard[state.discard.length - 1] || ev.oldCard); });
+      var inGhost = ghostCard(ev.newCard, true);
+      var inFly = A.flyGhost(inGhost, A.rect($('discard')), A.rect(slotEl), { duration: 360, arc: 26 })
+        .then(function () {
+          inGhost.remove();
+          var el = putCardInSlot(slotEl, ev.newCard);
+          return A.popIn(el);
+        });
+      return Promise.all([out, inFly]).then(function () {
+        return A.flashSlot(slotEl, '#ff5f52', 0.6);
+      });
+    }
+    // no card of that value burnt yet: red cross + owed value
+    paintPending(slotEl, ev.newValue);
+    S.play('scramble');
+    return Promise.all([
+      A.flashSlot(slotEl, '#ff5f52', 0.75),
+      A.pulse(slotEl, 1.1),
+      A.floatText(c.x, c.y - 30, '→ ' + ev.newValue, 'damage small')
+    ]);
+  }
+
+  /* a pending (red cross) card finally swaps for its owed denomination */
+  function playPendingResolved(ev, state) {
+    var slotEl = lifeSlotAt(ev.playerId, ev.index);
+    if (!slotEl) return Promise.resolve();
+    var cardIn = slotEl.querySelector('.card');
+    var from = cardIn ? A.rect(cardIn) : A.rect(slotEl);
+    var oldGhost = ghostCard(ev.oldCard, true);
+    if (cardIn) cardIn.remove();
+    clearPending(slotEl);
+    S.play('flip');
+    log(state.players[ev.playerId].name + "'s crossed " + ev.oldCard.label +
+      ' swaps for the ' + ev.newCard.label + ' from the burnt pile.');
+    var out = A.flyGhost(oldGhost, from, A.rect($('discard')), { duration: A.D.tumble, rotTo: 140 })
+      .then(function () { oldGhost.remove(); setDiscardTop(state.discard[state.discard.length - 1] || ev.oldCard); });
+    var inGhost = ghostCard(ev.newCard, true);
+    var inFly = A.flyGhost(inGhost, A.rect($('discard')), A.rect(slotEl), { duration: 360, arc: 26 })
+      .then(function () {
+        inGhost.remove();
+        var el = putCardInSlot(slotEl, ev.newCard);
+        return Promise.all([A.popIn(el), A.flashSlot(slotEl, '#5fe79b', 0.5)]);
+      });
+    return Promise.all([out, inFly]);
   }
 
   function playHealthReplaced(ev, state) {
     var player = state.players[ev.playerId];
-    var slotEl = healthSlot(ev.playerId, ev.slot);
+    var slotEl = lifeSlotAt(ev.playerId, ev.index);
+    if (!slotEl) return Promise.resolve();
     var oldCardEl = slotEl.querySelector('.card');
     var c = A.center(A.rect(slotEl));
 
@@ -436,13 +702,12 @@
 
     return out.then(function () {
       if (oldCardEl) oldCardEl.remove();
-      // the freshly drawn card is waiting on the stage — fly it into the slot
+      clearPending(slotEl);
       var sc = stageCards.pop();
-      var fly = sc
+      return sc
         ? A.flyGhost(sc.el, A.rect(sc.el), A.rect(slotEl), { duration: 380, arc: 30 })
             .then(function () { sc.el.remove(); })
         : Promise.resolve();
-      return fly;
     }).then(function () {
       var el = putCardInSlot(slotEl, ev.newCard);
       A.popIn(el);
@@ -454,7 +719,7 @@
       return Promise.all([
         A.floatText(c.x, c.y - 40, (delta >= 0 ? '+' : '') + delta, healed ? 'heal' : 'damage'),
         A.flashSlot(slotEl, healed ? '#5fe79b' : '#ff5f52', 0.7),
-        updateHp(player, true)
+        updateHpTo(ev.playerId, ev.newHp, true)
       ]);
     });
   }
@@ -463,11 +728,10 @@
     setBanner('⛨ ' + state.players[ev.byId].name + ' reforges ' +
       (ev.byId === ev.playerId ? 'their own' : state.players[ev.playerId].name + "'s") +
       ' shield', accent(ev.byId));
-    var slotEl = $('slot-shield-' + ev.playerId);
+    var slotEl = shieldSlot(ev.playerId);
     var oldCardEl = slotEl.querySelector('.card');
     var pile = A.rect($('discard'));
 
-    // old shield tumbles away
     var out = Promise.resolve();
     if (oldCardEl) {
       var ghost = ghostCard(ev.oldCard, true);
@@ -477,10 +741,9 @@
         .then(function () { ghost.remove(); setDiscardTop(ev.oldCard); });
     }
 
-    // new shield flies in from the stage
     var sc = stageCards.pop();
     var inFly = sc
-      ? A.flyGhost(sc.el, A.rect(sc.el), A.rect(slotEl), { duration: 400, arc: 36 })
+      ? A.flyGhost(sc.el, A.rect(sc.el), slotTargetRect(slotEl), { duration: 400, arc: 36 })
           .then(function () { sc.el.remove(); })
       : Promise.resolve();
 
@@ -495,37 +758,66 @@
     });
   }
 
+  /* a hidden charge slides face-down onto the player's charge stack */
   function playCharged(ev, state) {
-    var slotEl = $('slot-charge-' + ev.playerId);
+    var stackEl = chargeStack(ev.playerId);
     var sc = stageCards.pop();
     var fly = sc
-      ? A.flyGhost(sc.el, A.rect(sc.el), A.rect(slotEl), { duration: 400, arc: 30 })
+      ? A.flyGhost(sc.el, A.rect(sc.el), A.rect(stackEl), { duration: 380, arc: 26 })
           .then(function () { sc.el.remove(); })
       : Promise.resolve();
     return fly.then(function () {
-      setChargeSlot(ev.playerId, ev.card);
+      setChargeCount(ev.playerId, ev.count);
       S.play('charge');
-      var c = A.center(A.rect(slotEl));
+      var c = A.center(A.rect(stackEl));
       P.burst(c.x, c.y, 'charge');
-      log(state.players[ev.playerId].name + ' charges a ' + ev.card.label + '.');
-      return A.pulse(slotEl, 1.15);
+      log(state.players[ev.playerId].name + ' hides a charge (' + ev.count + ' held).');
+      return A.pulse(stackEl, 1.15);
     });
   }
 
-  function playChargeLost(ev, state) {
-    var slotEl = $('slot-charge-' + ev.playerId);
-    var cardIn = slotEl.querySelector('.card');
-    var out = Promise.resolve();
-    if (cardIn) {
-      var ghost = ghostCard(ev.card, true);
-      var from = A.rect(cardIn);
-      setChargeSlot(ev.playerId, null);
-      out = A.flyGhost(ghost, from, A.rect($('discard')), { duration: A.D.tumble, rotTo: 120, fadeOut: true })
+  function playChargesLost(ev, state) {
+    var stackEl = chargeStack(ev.playerId);
+    var from = A.rect(stackEl);
+    setChargeCount(ev.playerId, 0);
+    var c = A.center(from);
+    log(state.players[ev.playerId].name + "'s charges burn away!");
+    var jobs = ev.cards.map(function (card, i) {
+      var ghost = ghostCard(card, true);
+      return A.flyGhost(ghost, { left: from.left + i * 8, top: from.top, width: from.width, height: from.height },
+        A.rect($('discard')), { duration: A.D.tumble, rotTo: 120 + i * 30, fadeOut: true })
         .then(function () { ghost.remove(); });
-    } else {
-      setChargeSlot(ev.playerId, null);
+    });
+    P.burst(c.x, c.y, 'dissolve');
+    return Promise.all(jobs).then(function () {
+      if (state.discard.length) setDiscardTop(state.discard[state.discard.length - 1]);
+      return A.floatText(c.x, c.y - 26, 'CHARGES LOST', 'damage small');
+    });
+  }
+
+  function playGamble(ev, state) {
+    var me = state.players[ev.playerId];
+    S.play('charge');
+    log(me.name + ' gambles on the life — calling ' + ev.guess + '.');
+    return setBanner('🎲 ' + me.name + ' gambles on the life… ' +
+      (ev.guess === 'red' ? '♥ RED' : '♠ BLACK'), accent(ev.playerId));
+  }
+
+  function playGambleResult(ev, state) {
+    var me = state.players[ev.playerId];
+    if (ev.win) {
+      log('Fate smiles — the ' + ev.card.label + ' joins ' + me.name + "'s life!");
+      return flyStageCardToNewLifeSlot(ev.playerId, ev.card, ev.newHp);
     }
-    return out;
+    var zoneC = A.center(A.rect($('zone-' + ev.playerId)));
+    log('Fate frowns — ' + me.name + ' pays with their life.');
+    S.play('eliminate');
+    return Promise.all([
+      A.shakeTable(7),
+      A.floatText(zoneC.x, zoneC.y - 30, '☠ DOOMED', 'damage')
+    ]).then(function () {
+      return disposeStageToDiscard(state);
+    });
   }
 
   function playEliminated(ev, state) {
@@ -543,10 +835,11 @@
         { transform: 'translate(calc(-50% + 4px), -50%)', offset: 0.2 },
         { transform: 'translate(calc(-50% - 4px), -50%)', offset: 0.4 },
         { transform: 'translate(-50%, -50%)' }
-      ], { duration: 500 })
+      ], { duration: 500, autoCancel: true })
     ]).then(function () {
       zone.classList.add('eliminated');
-      return A.wait(650);
+      updateHpTo(ev.playerId, R.hp(player), false);
+      return A.wait(600);
     });
   }
 
@@ -556,7 +849,7 @@
     updateDeckCount(state);
     var deckC = A.center(A.rect($('deck')));
     P.burst(deckC.x, deckC.y, 'dissolve');
-    log('The discard pile is shuffled back into the deck.');
+    log('The burnt pile is shuffled back into the deck.');
     return Promise.all([
       A.pulse($('deck'), 1.14),
       A.floatText(deckC.x, deckC.y - 50, 'RESHUFFLE', 'info small')
@@ -567,14 +860,21 @@
     switch (ev.type) {
       case 'reshuffle': return playReshuffle(ev, state);
       case 'draw': return playDraw(ev, state);
-      case 'chargeConsumed': return playChargeConsumed(ev);
+      case 'jokerDrawn': return playJokerDrawn(ev, state);
+      case 'lifeGained': return playLifeGained(ev, state);
+      case 'chargesRevealed': return playChargesRevealed(ev, state);
       case 'attack': return playAttack(ev, state);
       case 'damage': return playDamage(ev, state);
       case 'blocked': return playBlocked(ev, state);
+      case 'lifeCardLost': return playLifeCardLost(ev, state);
+      case 'lifeCardDown': return playLifeCardDown(ev, state);
+      case 'pendingResolved': return playPendingResolved(ev, state);
       case 'healthReplaced': return playHealthReplaced(ev, state);
       case 'shieldReplaced': return playShieldReplaced(ev, state);
       case 'charged': return playCharged(ev, state);
-      case 'chargeLost': return playChargeLost(ev, state);
+      case 'chargesLost': return playChargesLost(ev, state);
+      case 'gamble': return playGamble(ev, state);
+      case 'gambleResult': return playGambleResult(ev, state);
       case 'eliminated': return playEliminated(ev, state);
       case 'win': return A.wait(500);
       case 'turnStart': return Promise.resolve();
@@ -633,6 +933,7 @@
     ACCENTS: ACCENTS,
     showScreen: showScreen,
     buildTable: buildTable,
+    syncAll: syncAll,
     animateDeal: animateDeal,
     announceTurn: announceTurn,
     setBanner: setBanner,
@@ -641,6 +942,9 @@
     enterTargetMode: enterTargetMode,
     enterCounterMode: enterCounterMode,
     exitTargetMode: exitTargetMode,
+    gambleConfirm: gambleConfirm,
+    gambleColor: gambleColor,
+    hideModal: hideModal,
     playEvent: playEvent,
     showVictory: showVictory,
     renderNameInputs: renderNameInputs,

@@ -31,6 +31,12 @@
 
 .shield-slot .slot-tag { color: #9fd0ff; }
 
+/* the shield lies SIDEWAYS above the life row: horizontal box, rotated card */
+.shield-slot {
+  width: var(--card-h);
+  height: calc(var(--card-w) * 1.04);
+}
+
 .shield-slot::before {
   content: '';
   position: absolute;
@@ -41,20 +47,70 @@
   pointer-events: none;
 }
 
-.charge-slot { border-style: dotted; }
+.shield-slot > .card {
+  position: absolute;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: var(--card-w);
+  height: var(--card-h);
+  animation: shieldIdle 3.4s ease-in-out infinite;
+}
 
-.charge-slot::before {
+/* ---------------- charge stack (hidden, face-down cards) ---------------- */
+
+.charge-stack {
+  position: relative;
+  width: calc(var(--card-w) * 0.74);
+  height: calc(var(--card-h) * 0.74);
+  border: 3px dotted rgba(242, 228, 194, 0.28);
+  border-radius: var(--card-radius);
+  background: rgba(20, 11, 6, 0.3);
+  align-self: flex-end;
+}
+
+.charge-stack::before {
   content: '⚡';
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: calc(var(--card-w) * 0.4);
+  font-size: calc(var(--card-w) * 0.34);
   color: rgba(242, 228, 194, 0.22);
   pointer-events: none;
 }
 
-.charge-slot.filled::before { content: none; }
+.charge-stack.filled::before { content: none; }
+.charge-stack.filled { border-color: transparent; }
+
+.cs-cards { position: absolute; inset: 0; }
+
+.cs-cards .card.mini {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: translate(calc(var(--stack-i) * 4px), calc(var(--stack-i) * -3px))
+    rotate(calc(var(--stack-i) * 4deg));
+}
+
+.cs-count {
+  position: absolute;
+  right: -9px;
+  top: -9px;
+  z-index: 5;
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: #241610;
+  background: linear-gradient(178deg, #ffc44d, var(--gold) 60%, #cf9422);
+  border: 2px solid #241610;
+  border-radius: 50%;
+  box-shadow: 0 3px 0 rgba(15, 8, 4, 0.4);
+}
 
 /* every slot owns a flash overlay for impact/heal/hurt effects */
 .slot-flash {
@@ -157,6 +213,68 @@
   border: 2px solid color-mix(in srgb, var(--suit-color, #33285a) 22%, transparent);
   border-radius: calc(var(--card-radius) * 0.65);
   pointer-events: none;
+}
+
+/* ---------------- joker ---------------- */
+
+.card.joker { --suit-color: #8a5fc9; }
+
+.card .joker-face { display: grid; place-items: center; }
+
+.joker-star {
+  font-size: calc(var(--card-w) * 0.52);
+  color: #8a5fc9;
+  text-shadow: 0 0 12px rgba(138, 95, 201, 0.7), 0 3px 0 rgba(42, 28, 18, 0.3);
+}
+
+.joker-word {
+  position: absolute;
+  bottom: 9%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: calc(var(--card-w) * 0.15);
+  letter-spacing: 0.18em;
+  color: #8a5fc9;
+}
+
+/* ---------------- pending "red cross" life card ---------------- */
+
+.slot.pending > .card { filter: grayscale(0.55) brightness(0.72); }
+
+.slot.pending::before {
+  content: '✕';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: calc(var(--card-w) * 0.78);
+  line-height: 1;
+  color: #e33d30;
+  text-shadow: 0 0 8px rgba(190, 30, 20, 0.55), 0 3px 0 rgba(0, 0, 0, 0.45);
+  z-index: 4;
+  pointer-events: none;
+  animation: crossStamp 0.32s cubic-bezier(0.22, 1.6, 0.36, 1);
+}
+
+/* the denomination this crossed card owes */
+.owe {
+  position: absolute;
+  right: -9px;
+  top: -9px;
+  z-index: 5;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: #fff;
+  background: linear-gradient(178deg, #ff6b5f, #c93333);
+  border: 2px solid #241610;
+  border-radius: 50%;
+  box-shadow: 0 3px 0 rgba(15, 8, 4, 0.4);
 }
 
 /* ---------------- card back: heraldic red & gold ---------------- */

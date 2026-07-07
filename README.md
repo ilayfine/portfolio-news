@@ -1,7 +1,7 @@
 # ⚔ SHIELD
 
 A medieval castle card game for **2–4 players on one screen** (hot-seat), played with a
-standard 52-card deck — brick walls, flickering torches, a round wooden table, and
+54-card deck (jokers included) — mossy castle walls, flickering torches, a round wooden table, and
 chunky parchment cards with playful, snappy animations. Pure HTML/CSS/JS — no build step, no dependencies, no server.
 
 ## Play it
@@ -16,25 +16,40 @@ Sound can be toggled with the ♪ button (bottom-right); the preference is remem
 
 ## Rules
 
-Card values: **A = 1**, 2–10 face value, **J = 11, Q = 12, K = 13**. Suits don't matter.
+Played with a standard deck **plus two jokers** (54 cards). Card values: **A = 1**,
+2–10 face value, **J = 11, Q = 12, K = 13**. Suits only matter when gambling.
 
-Every player starts with three face-up cards: one **Shield** and two **Life** cards.
-Your health is the **sum of your two life cards**; damage subtracts from that pool.
-Reach 0 and you're out. **Last one standing wins.**
+Every player starts with a sideways **Shield** card and two **Life** cards. Your
+life IS the cards: your total health is the sum of your life cards' values.
+Lose them all and you're out. **Last one standing wins.**
 
 On your turn, do exactly one of:
 
-- **⚔ Attack** — pick a target and draw a card from the deck; that's your attack value.
-  - If it's **higher** than the target's shield, they take the difference as damage.
-  - If it's **equal or lower**, the attack is *blocked* — and the defender strikes back:
-    they pick one of **your** life cards, which is replaced by a random card from the
-    deck. That can leave you weaker, healthier… or dead.
+- **⚔ Attack** — pick a target and draw a card; that's your attack value (plus any
+  hidden charges you hold, which are revealed and spent).
+  - If it **beats** the target's shield, they take the difference as damage. Damage
+    hits their **lowest life card first**: the card swaps to its reduced
+    denomination (a 6 that takes 4 becomes a 2). The replacement comes from the
+    burnt pile if it's there — otherwise the card is marked with a **red cross**
+    and owes that value until one turns up in the burnt pile, then swaps
+    automatically. A card reduced to nothing is destroyed, and leftover damage
+    spills onto the next-lowest card. Taking any life damage also **burns all your
+    hidden charges**.
+  - If it's **equal or lower**, the attack is *blocked* — and the defender strikes
+    back: they pick one of **your** life cards, which is replaced by a random card
+    from the deck.
 - **⛨ Change Shield** — replace anyone's shield (yours included) with a random card
   from the deck.
-- **⚡ Charge** — draw a card into your charge slot. Your next attack adds it to the
-  drawn attack card, then it's spent. You can hold only one charge at a time.
+- **⚡ Charge** — draw a card **face down** into your charge stack. Nobody sees it
+  (not even you) until your next attack adds every held charge to the drawn card.
+  Charges stack without limit — but you lose them all if someone lands a hit on you.
+- **◆ The sigil button** — *gamble on the life*. Call **red or black**; if the next
+  card matches, it joins your life. If it doesn't, you die on the spot.
 
-The discard pile is shuffled back into the deck whenever the deck runs out.
+**Jokers:** any draw that turns up a joker grants the drawer an **extra life card**
+(the next card off the deck), and then the draw continues for its original purpose.
+This applies to every action — even mid-gamble (the color call stays locked) and
+counters (there it's the defender doing the drawing who benefits).
 
 ## Project layout
 

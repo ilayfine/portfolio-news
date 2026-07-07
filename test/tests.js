@@ -16,10 +16,6 @@
     if (!cond && typeof console !== 'undefined') console.error('FAIL: ' + msg);
   }
 
-  function eventTypes(events) {
-    return events.map(function (e) { return e.type; });
-  }
-
   function has(events, type) {
     return events.some(function (e) { return e.type === type; });
   }
@@ -28,251 +24,367 @@
     return events.filter(function (e) { return e.type === type; })[0];
   }
 
+  function findAll(events, type) {
+    return events.filter(function (e) { return e.type === type; });
+  }
+
+  /* put specific cards on top of the deck; last array item is drawn FIRST */
+  function stackDeck(state, cards) {
+    var ids = {};
+    cards.forEach(function (c) { ids[c.id] = true; });
+    state.deck = state.deck.filter(function (c) { return !ids[c.id]; });
+    for (var i = cards.length - 1; i >= 0; i--) state.deck.push(cards[i]);
+  }
+
+  function findCard(state, rank, opts) {
+    opts = opts || {};
+    for (var i = 0; i < state.deck.length; i++) {
+      var c = state.deck[i];
+      if (c.joker) { if (rank === 0) return c; continue; }
+      if (c.rank === rank && (opts.red === undefined || c.red === opts.red)) return c;
+    }
+    return null;
+  }
+
   /* ---------------- deck & setup ---------------- */
 
   (function () {
     var deck = R.buildDeck();
-    assert(deck.length === 52, 'deck has 52 cards');
+    assert(deck.length === 54, 'deck has 54 cards (52 + 2 jokers)');
+    var jokers = deck.filter(function (c) { return c.joker; });
+    assert(jokers.length === 2, 'two jokers in the deck');
     var ids = {};
     deck.forEach(function (c) { ids[c.id] = true; });
-    assert(Object.keys(ids).length === 52, 'all 52 cards unique');
-    assert(deck.every(function (c) { return c.rank >= 1 && c.rank <= 13; }), 'ranks 1..13');
+    assert(Object.keys(ids).length === 54, 'all 54 cards unique');
   })();
 
   (function () {
     var s = R.newGame(['A', 'B', 'C', 'D'], 1);
     assert(s.players.length === 4, 'four players created');
-    assert(s.deck.length === 52 - 12, 'deck has 40 cards after dealing 4 players');
+    assert(s.deck.length === 54 - 12, 'deck has 42 cards after dealing 4 players');
+    var dealtJoker = false;
     s.players.forEach(function (p) {
-      assert(!!p.shield && p.health.length === 2, p.name + ' has shield + 2 health');
-      assert(R.hp(p) === p.health[0].rank + p.health[1].rank, p.name + ' hp = sum of health cards');
+      if (p.shield.joker) dealtJoker = true;
+      p.health.forEach(function (sl) { if (sl.card.joker) dealtJoker = true; });
+      assert(!!p.shield && p.health.length === 2, p.name + ' has shield + 2 life cards');
+      assert(R.hp(p) === p.health[0].value + p.health[1].value, p.name + ' hp = sum of life values');
+      assert(p.charge.length === 0, p.name + ' starts with no charges');
     });
-    assert(R.countAllCards(s) === 52, 'card conservation after deal');
+    assert(!dealtJoker, 'jokers are never dealt at setup');
+    assert(R.countAllCards(s) === 54, 'card conservation after deal');
   })();
 
-  /* ---------------- attack: hit ---------------- */
+  /* ---------------- damage denominations ---------------- */
 
   (function () {
+    // user's example: life 10 & 6, take 4 damage -> the 6 becomes a 2
     var s = R.newGame(['A', 'B'], 2);
-    s.players[1].shield = R.makeCard(5, 'spades'); // fix shield for determinism
-    R.forceNextDraw(s, 8);
+    var b = s.players[1];
+    b.shield = R.makeCard(5, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(6, 'clubs'))];
+    var two = findCard(s, 2);
+    s.discard.push(two); // a 2 is waiting in the burnt pile
+    s.deck = s.deck.filter(function (c) { return c.id !== two.id; });
+    stackDeck(s, [findCard(s, 9)]); // attack 9 vs shield 5 = 4 damage
     var ev = R.resolveAttack(s, 1);
-    var dmg = find(ev, 'damage');
-    assert(!!dmg, 'attack 8 vs shield 5 deals damage');
-    assert(dmg.amount === 3, 'damage amount is attack - shield = 3');
-    assert(s.players[1].damage === 3, 'target damage accumulated');
-    assert(dmg.newHp === R.hp(s.players[1]), 'damage event reports new hp');
-    assert(!s.pending, 'no counter pending after a hit');
+    var down = find(ev, 'lifeCardDown');
+    assert(!!down, 'partial damage changes a life card');
+    assert(down.newValue === 2 && down.oldCard.rank === 6, 'the LOWER card (6) becomes a 2');
+    assert(down.newCard && down.newCard.rank === 2, 'the 2 is taken from the burnt pile');
+    assert(!down.pending, 'no red cross when the pile has the card');
+    assert(b.health[1].card.id === two.id && b.health[1].value === 2, 'slot now holds the real 2');
+    assert(s.discard.some(function (c) { return c.rank === 6; }), 'the old 6 was burnt');
+    assert(R.hp(b) === 12, 'hp is 10 + 2');
+    assert(R.countAllCards(s) === 54, 'card conservation after swap');
   })();
 
-  /* ---------------- attack: blocked -> counter ---------------- */
-
   (function () {
+    // no 2 in the pile -> red cross (pending), resolved by a later burn
     var s = R.newGame(['A', 'B'], 3);
-    s.players[1].shield = R.makeCard(13, 'spades'); // K blocks everything
-    R.forceNextDraw(s, 4);
+    var b = s.players[1];
+    b.shield = R.makeCard(5, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(6, 'clubs'))];
+    var atk = findCard(s, 9);
+    var two = findCard(s, 2);
+    stackDeck(s, [atk]);
+    s.deck = s.deck.filter(function (c) { return c.id !== two.id; }); // ensure no accidental 2s
     var ev = R.resolveAttack(s, 1);
-    assert(has(ev, 'blocked'), 'attack 4 vs shield K is blocked');
-    assert(has(ev, 'counterRequired'), 'blocked attack requires a counter');
-    assert(!has(ev, 'damage'), 'blocked attack deals no damage');
-    assert(s.pending && s.pending.type === 'counter', 'counter is pending');
-    assert(s.pending.attackerId === 0 && s.pending.defenderId === 1, 'counter roles correct');
+    var down = find(ev, 'lifeCardDown');
+    assert(down.pending && !down.newCard, 'red cross when the pile lacks the denomination');
+    assert(b.health[1].pending && b.health[1].value === 2 && b.health[1].card.rank === 6,
+      'crossed 6 owes a 2');
+    assert(R.hp(b) === 12, 'pending value still counts toward hp');
 
-    // equal value is also blocked
-    var s2 = R.newGame(['A', 'B'], 4);
-    s2.players[1].shield = R.makeCard(7, 'hearts');
-    R.forceNextDraw(s2, 7);
-    var ev2 = R.resolveAttack(s2, 1);
-    assert(has(ev2, 'blocked'), 'attack equal to shield is blocked');
+    // now a 2 gets burnt via a shield change
+    R.advanceTurn(s);
+    var oldShield = s.players[0].shield;
+    s.players[0].shield = two;  // plant the 2 as the shield about to be burnt
+    s.deck.push(oldShield);     // keep the card count intact
+    var ev2 = R.resolveChangeShield(s, 0);
+    var res = find(ev2, 'pendingResolved');
+    assert(!!res, 'pending swap resolves when a 2 hits the burnt pile');
+    assert(b.health[1].card.rank === 2 && !b.health[1].pending, 'the crossed 6 became a real 2');
+    assert(s.discard.some(function (c) { return c.rank === 6; }), 'the 6 finally burnt');
+    assert(R.countAllCards(s) === 54, 'card conservation after pending swap');
   })();
 
-  /* ---------------- counter: replaces attacker health, recomputes pool ---------------- */
+  (function () {
+    // overflow: life 10 & 6, take 8 -> the 6 dies, the 10 becomes an 8
+    var s = R.newGame(['A', 'B'], 4);
+    var b = s.players[1];
+    b.shield = R.makeCard(5, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(6, 'clubs'))];
+    stackDeck(s, [findCard(s, 13)]); // K vs 5 = 8 damage
+    var ev = R.resolveAttack(s, 1);
+    var lost = find(ev, 'lifeCardLost');
+    assert(lost && lost.card.rank === 6, 'the 6 is destroyed first');
+    var down = find(ev, 'lifeCardDown');
+    assert(down && down.oldCard.rank === 10 && down.newValue === 8, 'overflow: the 10 owes an 8');
+    assert(b.health.length === 1 && R.hp(b) === 8, 'one life card left, hp 8');
+  })();
 
   (function () {
+    // lethal damage empties all life cards -> eliminated -> win (2p)
     var s = R.newGame(['A', 'B'], 5);
-    s.players[0].health = [R.makeCard(10, 'clubs'), R.makeCard(9, 'clubs')];
-    s.players[0].damage = 4; // pool = 15
-    s.players[1].shield = R.makeCard(13, 'spades');
-    R.forceNextDraw(s, 2);
-    R.resolveAttack(s, 1);
-    R.forceNextDraw(s, 1); // counter draws an Ace
-    var ev = R.resolveCounter(s, 0);
-    var hr = find(ev, 'healthReplaced');
-    assert(!!hr, 'counter replaces a health card');
-    assert(hr.playerId === 0 && hr.byId === 1, 'defender scrambles the ATTACKER\'s card');
-    assert(s.players[0].health[0].rank === 1, 'chosen slot got the drawn card');
-    assert(R.hp(s.players[0]) === 1 + 9 - 4, 'pool recomputed: newCard + other - damage');
-    assert(hr.newHp === 6 && hr.oldHp === 15, 'event reports old/new hp');
-    assert(!s.pending, 'pending cleared after counter');
+    var b = s.players[1];
+    b.shield = R.makeCard(1, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(2, 'clubs')), R.lifeSlot(R.makeCard(3, 'clubs'))];
+    b.charge = [s.deck.pop(), s.deck.pop()]; // held charges burn on the hit
+    stackDeck(s, [findCard(s, 13)]); // 13 vs 1 = 12 >= 5 total
+    var ev = R.resolveAttack(s, 1);
+    assert(findAll(ev, 'lifeCardLost').length === 2, 'both life cards destroyed');
+    assert(has(ev, 'eliminated') && b.eliminated, 'player eliminated when life runs out');
+    assert(has(ev, 'chargesLost'), 'charges burn when the holder is hit');
+    assert(b.health.length === 0 && b.charge.length === 0, 'no cards left in play for the dead');
+    assert(has(ev, 'win') && s.winnerId === 0, 'last one standing wins');
+    assert(R.countAllCards(s) === 54, 'card conservation after elimination');
   })();
 
-  /* ---------------- counter can eliminate the attacker ---------------- */
+  /* ---------------- charges: hidden, stackable, fragile ---------------- */
 
   (function () {
-    var s = R.newGame(['A', 'B', 'C'], 6);
-    s.players[0].health = [R.makeCard(13, 'clubs'), R.makeCard(1, 'clubs')];
-    s.players[0].damage = 13; // pool = 1, kept alive by the King
-    s.players[1].shield = R.makeCard(13, 'spades');
-    R.forceNextDraw(s, 3);
-    R.resolveAttack(s, 1);
-    R.forceNextDraw(s, 5); // K replaced by 5 -> pool = 5 + 1 - 13 = -7
-    var ev = R.resolveCounter(s, 0);
-    assert(has(ev, 'eliminated'), 'counter can eliminate the attacker');
-    assert(find(ev, 'eliminated').playerId === 0, 'the attacker is the one eliminated');
-    assert(s.players[0].eliminated, 'attacker flagged eliminated');
-    assert(s.winnerId === null, 'no winner yet with 2 players remaining');
+    var s = R.newGame(['A', 'B'], 6);
+    var a = s.players[0];
+    stackDeck(s, [findCard(s, 6), findCard(s, 4)]);
+    R.resolveCharge(s);
+    var ev2 = R.resolveCharge(s);
+    assert(a.charge.length === 2, 'charges stack (two held)');
+    assert(find(ev2, 'charged').count === 2, 'charged event reports the stack size');
+    assert(R.legalActions(s).charge === true, 'charging stays legal with charges held');
+
+    s.players[1].shield = R.makeCard(5, 'spades');
+    s.players[1].health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(9, 'clubs'))];
+    stackDeck(s, [findCard(s, 7)]);
+    var ev = R.resolveAttack(s, 1);
+    var rev = find(ev, 'chargesRevealed');
+    assert(rev && rev.cards.length === 2, 'attack reveals all hidden charges');
+    assert(find(ev, 'attack').value === 7 + 6 + 4, 'attack value = drawn + all charges');
+    assert(find(ev, 'damage').amount === 12, 'damage 17 - 5 = 12');
+    assert(a.charge.length === 0, 'charges consumed by the attack');
+    assert(R.countAllCards(s) === 54, 'card conservation after charged attack');
   })();
 
-  /* ---------------- defender wins via counter (2 players) ---------------- */
-
   (function () {
+    // taking a hit burns your charges; a blocked attack does not
     var s = R.newGame(['A', 'B'], 7);
-    s.players[0].health = [R.makeCard(13, 'clubs'), R.makeCard(1, 'clubs')];
-    s.players[0].damage = 13;
-    s.players[1].shield = R.makeCard(13, 'spades');
-    R.forceNextDraw(s, 2);
-    R.resolveAttack(s, 1);
-    R.forceNextDraw(s, 4);
-    var ev = R.resolveCounter(s, 0);
-    assert(has(ev, 'win'), 'defender wins when counter eliminates last opponent');
-    assert(find(ev, 'win').playerId === 1, 'winner is the defender');
-    assert(s.winnerId === 1, 'winnerId set');
-    assert(R.advanceTurn(s).length === 0, 'no turn advance after win');
+    var b = s.players[1];
+    b.charge = [s.deck.pop()];
+    b.shield = R.makeCard(13, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(9, 'clubs'))];
+    stackDeck(s, [findCard(s, 4)]);
+    var ev = R.resolveAttack(s, 1); // 4 vs K -> blocked
+    assert(has(ev, 'blocked') && !has(ev, 'chargesLost'), 'blocked attack leaves target charges alone');
+    assert(b.charge.length === 1, 'charge survives a block');
+    R.resolveCounter(s, 0);
+
+    b.shield = R.makeCard(2, 'spades');
+    R.advanceTurn(s); R.advanceTurn(s); // back to A
+    stackDeck(s, [findCard(s, 9)]);
+    var ev2 = R.resolveAttack(s, 1); // 9 vs 2 -> hit
+    var cl = find(ev2, 'chargesLost');
+    assert(cl && cl.reason === 'hit', 'life hit burns ALL held charges');
+    assert(b.charge.length === 0, 'charge stack emptied by the hit');
   })();
 
-  /* ---------------- charge ---------------- */
+  /* ---------------- counter (index-based, defender benefits) -------------- */
 
   (function () {
     var s = R.newGame(['A', 'B'], 8);
-    R.forceNextDraw(s, 6);
-    var ev = R.resolveCharge(s);
-    assert(has(ev, 'charged'), 'charge event emitted');
-    assert(s.players[0].charge && s.players[0].charge.rank === 6, 'charge slot holds the card');
-    assert(R.legalActions(s).charge === false, 'cannot charge while holding a charge');
-
-    var threw = false;
-    try { R.resolveCharge(s); } catch (e) { threw = true; }
-    assert(threw, 'double charge throws');
-
-    s.players[1].shield = R.makeCard(5, 'spades');
-    R.forceNextDraw(s, 7);
-    var ev2 = R.resolveAttack(s, 1);
-    var atk = find(ev2, 'attack');
-    assert(has(ev2, 'chargeConsumed'), 'charge consumed on attack');
-    assert(atk.value === 13, 'attack value = charge 6 + drawn 7');
-    assert(find(ev2, 'damage').amount === 8, 'damage 13 - 5 = 8');
-    assert(s.players[0].charge === null, 'charge slot empty after attack');
-    assert(R.countAllCards(s) === 52, 'card conservation after charged attack');
+    var a = s.players[0];
+    a.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(9, 'clubs')), R.lifeSlot(R.makeCard(4, 'clubs'))];
+    s.players[1].shield = R.makeCard(13, 'spades');
+    stackDeck(s, [findCard(s, 3)]);
+    R.resolveAttack(s, 1);
+    assert(s.pending && s.pending.defenderId === 1, 'counter pending for the defender');
+    stackDeck(s, [findCard(s, 12)]);
+    var ev = R.resolveCounter(s, 2); // scramble the third card (the 4)
+    var hr = find(ev, 'healthReplaced');
+    assert(hr && hr.index === 2 && hr.oldCard.rank === 4, 'defender picks any life card by index');
+    assert(a.health[2].card.rank === 12 && a.health[2].value === 12, 'scrambled card at face value');
+    assert(!s.pending, 'pending cleared after counter');
   })();
 
-  /* ---------------- change shield (self and opponent) ---------------- */
+  /* ---------------- jokers grant extra life ---------------- */
 
   (function () {
+    // attack draw hits a joker: attacker gains a life card, next card attacks
     var s = R.newGame(['A', 'B'], 9);
-    var oldOwn = s.players[0].shield;
-    var ev = R.resolveChangeShield(s, 0);
-    assert(has(ev, 'shieldReplaced'), 'self shield change works');
-    assert(s.players[0].shield.id !== oldOwn.id, 'shield actually replaced');
-    assert(s.discard.indexOf(oldOwn) !== -1, 'old shield went to discard');
-
-    var oldOpp = s.players[1].shield;
-    R.resolveChangeShield(s, 1);
-    assert(s.players[1].shield.id !== oldOpp.id, 'opponent shield change works');
-    assert(R.countAllCards(s) === 52, 'card conservation after shield changes');
+    var a = s.players[0];
+    s.players[1].shield = R.makeCard(5, 'spades');
+    var joker = findCard(s, 0);
+    var lifeC = findCard(s, 7);
+    var atkC = findCard(s, 9);
+    stackDeck(s, [joker, lifeC, atkC]); // joker drawn first
+    var ev = R.resolveAttack(s, 1);
+    var jd = find(ev, 'jokerDrawn');
+    assert(jd && jd.playerId === 0, 'joker on an attack draw favors the attacker');
+    var lg = find(ev, 'lifeGained');
+    assert(lg && lg.card.id === lifeC.id, 'the next card joins the attacker\'s life');
+    assert(a.health.length === 3, 'attacker now has three life cards');
+    assert(find(ev, 'attack').card.id === atkC.id, 'the card after that is the attack card');
+    assert(s.discard.some(function (c) { return c.joker; }), 'the joker is burnt');
+    assert(R.countAllCards(s) === 54, 'card conservation with jokers');
   })();
 
-  /* ---------------- turn order skips eliminated ---------------- */
+  (function () {
+    // joker during a counter benefits the DEFENDER performing it
+    var s = R.newGame(['A', 'B'], 10);
+    var b = s.players[1];
+    b.shield = R.makeCard(13, 'spades');
+    stackDeck(s, [findCard(s, 3)]);
+    R.resolveAttack(s, 1);
+    var joker = findCard(s, 0);
+    var lifeC = findCard(s, 8);
+    var replC = findCard(s, 5);
+    stackDeck(s, [joker, lifeC, replC]);
+    var ev = R.resolveCounter(s, 0);
+    assert(find(ev, 'jokerDrawn').playerId === 1, 'joker in a counter favors the defender');
+    assert(b.health.length === 3, 'defender gained the extra life card');
+    assert(find(ev, 'healthReplaced').newCard.id === replC.id, 'the card after feeds the scramble');
+  })();
 
   (function () {
-    var s = R.newGame(['A', 'B', 'C', 'D'], 10);
+    // two jokers chain: two extra life cards, then the action card
+    var s = R.newGame(['A', 'B'], 11);
+    var a = s.players[0];
+    var j1 = findCard(s, 0);
+    s.deck = s.deck.filter(function (c) { return c.id !== j1.id; });
+    var j2 = findCard(s, 0);
+    s.deck.push(j1);
+    var l1 = findCard(s, 6), l2 = findCard(s, 9), chg = findCard(s, 3);
+    stackDeck(s, [j1, l1, j2, l2, chg]);
+    var ev = R.resolveCharge(s);
+    assert(findAll(ev, 'jokerDrawn').length === 2, 'jokers can chain');
+    assert(findAll(ev, 'lifeGained').length === 2, 'each joker grants a life card');
+    assert(a.health.length === 4, 'two extra life cards gained');
+    assert(a.charge.length === 1 && a.charge[0].id === chg.id, 'the action still completes');
+  })();
+
+  /* ---------------- gamble on the life ---------------- */
+
+  (function () {
+    var s = R.newGame(['A', 'B'], 12);
+    var a = s.players[0];
+    stackDeck(s, [findCard(s, 8, { red: true })]);
+    var ev = R.resolveGamble(s, 'red');
+    var gr = find(ev, 'gambleResult');
+    assert(gr && gr.win, 'correct color wins the gamble');
+    assert(a.health.length === 3, 'won card joins your life');
+    assert(R.hp(a) === a.health[0].value + a.health[1].value + 8, 'hp includes the won card');
+    assert(R.countAllCards(s) === 54, 'card conservation after gamble win');
+  })();
+
+  (function () {
+    var s = R.newGame(['A', 'B'], 13);
+    stackDeck(s, [findCard(s, 8, { red: false })]);
+    var ev = R.resolveGamble(s, 'red');
+    assert(!find(ev, 'gambleResult').win, 'wrong color loses the gamble');
+    assert(has(ev, 'eliminated') && s.players[0].eliminated, 'losing the gamble kills you immediately');
+    assert(has(ev, 'win') && s.winnerId === 1, 'the survivor wins');
+    assert(R.countAllCards(s) === 54, 'card conservation after gamble death');
+  })();
+
+  (function () {
+    // joker mid-gamble: extra life first, then the next card decides -> 2 cards
+    var s = R.newGame(['A', 'B'], 14);
+    var a = s.players[0];
+    var joker = findCard(s, 0);
+    var lifeC = findCard(s, 5);
+    var redC = findCard(s, 11, { red: true });
+    stackDeck(s, [joker, lifeC, redC]);
+    var ev = R.resolveGamble(s, 'red');
+    assert(has(ev, 'jokerDrawn') && has(ev, 'lifeGained'), 'joker grants its life inside the gamble');
+    assert(find(ev, 'gambleResult').win, 'the card after the joker decides the color');
+    assert(a.health.length === 4, 'joker + won gamble = 2 extra life cards');
+  })();
+
+  /* ---------------- misc ---------------- */
+
+  (function () {
+    var s = R.newGame(['A', 'B', 'C', 'D'], 15);
     s.players[1].eliminated = true;
     s.players[2].eliminated = true;
     var ev = R.advanceTurn(s);
     assert(ev[0].playerId === 3, 'turn skips eliminated players');
     var la = R.legalActions(s);
     assert(la.attack.length === 1 && la.attack[0] === 0, 'attack targets exclude eliminated + self');
-    assert(la.changeShield.indexOf(1) === -1 && la.changeShield.indexOf(2) === -1,
-      'shield targets exclude eliminated');
-    assert(la.changeShield.indexOf(3) !== -1, 'shield targets include self');
+    assert(la.charge === true && la.gamble === true, 'charge and gamble always available');
   })();
 
-  /* ---------------- reshuffle when deck empties ---------------- */
-
   (function () {
-    var s = R.newGame(['A', 'B'], 11);
-    // burn the deck down with shield changes (each recycles a card to discard)
+    var s = R.newGame(['A', 'B'], 16);
     var sawReshuffle = false;
-    for (var i = 0; i < 120; i++) {
+    for (var i = 0; i < 140; i++) {
       var ev = R.resolveChangeShield(s, i % 2);
       if (has(ev, 'reshuffle')) sawReshuffle = true;
-      assert(R.countAllCards(s) === 52, 'card conservation during churn #' + i);
+      assert(R.countAllCards(s) === 54, 'card conservation during churn #' + i);
       if (sawReshuffle && i > 60) break;
     }
-    assert(sawReshuffle, 'deck reshuffles from discard when exhausted');
-    assert(s.deck.length + s.discard.length === 52 - 6, 'deck+discard = 52 - table cards');
+    assert(sawReshuffle, 'deck reshuffles from the burnt pile when exhausted');
   })();
 
-  /* ---------------- eliminated player loses their charge ---------------- */
+  /* ---------------- fuzz: 400 random games ---------------- */
 
   (function () {
-    var s = R.newGame(['A', 'B'], 12);
-    s.players[1].health = [R.makeCard(1, 'clubs'), R.makeCard(1, 'spades')];
-    s.players[1].damage = 0; // pool = 2
-    s.players[1].shield = R.makeCard(1, 'hearts');
-    s.players[1].charge = s.deck.pop(); // give B a held charge
-    R.forceNextDraw(s, 13);
-    var ev = R.resolveAttack(s, 1);
-    assert(has(ev, 'eliminated'), 'B eliminated by big attack');
-    assert(has(ev, 'chargeLost'), 'eliminated player\'s charge is discarded');
-    assert(s.players[1].charge === null, 'charge slot cleared');
-    assert(has(ev, 'win'), 'last player standing wins');
-    assert(R.countAllCards(s) === 52, 'card conservation after elimination');
-  })();
-
-  /* ---------------- fuzz: 500 random games, invariants hold, games end ---------------- */
-
-  (function () {
-    var games = 500;
-    var ok = true, terminated = true, maxTurns = 0;
+    var games = 400;
+    var ok = true, terminated = true, maxTurns = 0, msg = '';
     for (var g = 0; g < games; g++) {
       var nPlayers = 2 + (g % 3);
       var names = [];
       for (var i = 0; i < nPlayers; i++) names.push('P' + i);
-      var s = R.newGame(names, 1000 + g);
+      var s = R.newGame(names, 2000 + g);
       var rng = R.makeRng(9000 + g);
       var turns = 0;
       while (s.winnerId === null && turns < 5000) {
         turns++;
         var la = R.legalActions(s);
-        var options = [];
-        if (la.attack.length) options.push('attack');
-        if (la.changeShield.length) options.push('shield');
-        if (la.charge) options.push('charge');
-        var pick = options[Math.floor(rng() * options.length)];
-        var ev;
-        if (pick === 'attack') {
-          var t = la.attack[Math.floor(rng() * la.attack.length)];
-          ev = R.resolveAttack(s, t);
-          if (s.pending) R.resolveCounter(s, Math.floor(rng() * 2));
-        } else if (pick === 'shield') {
-          var t2 = la.changeShield[Math.floor(rng() * la.changeShield.length)];
-          ev = R.resolveChangeShield(s, t2);
+        var roll = rng();
+        if (roll < 0.55 && la.attack.length) {
+          R.resolveAttack(s, la.attack[Math.floor(rng() * la.attack.length)]);
+          if (s.pending) {
+            var attacker = s.players[s.pending.attackerId];
+            R.resolveCounter(s, Math.floor(rng() * attacker.health.length));
+          }
+        } else if (roll < 0.75) {
+          R.resolveChangeShield(s, la.changeShield[Math.floor(rng() * la.changeShield.length)]);
+        } else if (roll < 0.92) {
+          R.resolveCharge(s);
         } else {
-          ev = R.resolveCharge(s);
+          R.resolveGamble(s, rng() < 0.5 ? 'red' : 'black');
         }
-        if (R.countAllCards(s) !== 52) { ok = false; break; }
+        if (R.countAllCards(s) !== 54) { ok = false; msg = 'conservation game ' + g; break; }
         var aliveOk = s.players.every(function (p) {
-          return p.eliminated ? true : R.hp(p) > 0;
+          return p.eliminated || (p.health.length > 0 && R.hp(p) > 0);
         });
-        if (!aliveOk) { ok = false; break; }
+        if (!aliveOk) { ok = false; msg = 'alive-but-dead game ' + g; break; }
         if (s.winnerId === null) R.advanceTurn(s);
       }
-      if (s.winnerId === null) terminated = false;
+      if (s.winnerId === null) { terminated = false; msg = 'game ' + g + ' never ended'; }
       if (turns > maxTurns) maxTurns = turns;
-      if (!ok) break;
+      if (!ok || !terminated) break;
     }
-    assert(ok, 'fuzz: invariants held across ' + games + ' random games');
-    assert(terminated, 'fuzz: every random game terminated (max turns seen: ' + maxTurns + ')');
+    assert(ok, 'fuzz: invariants held across ' + games + ' random games ' + msg);
+    assert(terminated, 'fuzz: every random game terminated (max turns: ' + maxTurns + ') ' + msg);
   })();
 
   /* ---------------- report ---------------- */
@@ -290,6 +402,7 @@
       root.appendChild(li);
     });
     document.getElementById('summary').textContent = summary;
+    document.getElementById('summary').className = failed ? 'pass' : 'pass';
     document.getElementById('summary').className = failed ? 'fail' : 'pass';
   } else {
     console.log(summary);

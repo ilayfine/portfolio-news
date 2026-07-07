@@ -72,24 +72,36 @@
   50%      { transform: translateY(-5px) rotate(1.4deg); }
 }
 
-.charge-slot.filled { border-color: transparent; }
-
-.charge-slot.filled > .card {
-  animation: chargeBob 1.6s ease-in-out infinite;
+.charge-stack.filled .cs-cards {
+  animation: chargeBob 2s ease-in-out infinite;
 }
 
-.charge-slot.filled .charge-aura {
-  position: absolute;
-  inset: -9px;
-  border-radius: calc(var(--card-radius) + 9px);
-  background: radial-gradient(circle,
-    rgba(255, 200, 98, 0.32) 0%,
-    rgba(255, 175, 46, 0.16) 50%,
-    transparent 72%);
-  border: 3px dashed rgba(255, 200, 98, 0.75);
-  box-shadow: 0 0 20px rgba(255, 175, 46, 0.5);
-  animation: chargeAura 1.4s ease-in-out infinite;
-  pointer-events: none;
+.charge-stack.filled {
+  box-shadow: 0 0 18px rgba(255, 175, 46, 0.45);
+}
+
+/* the sideways shield's idle sway (keeps its 90° base rotation) */
+@keyframes shieldIdle {
+  0%, 100% { transform: translate(-50%, -50%) rotate(89.2deg); }
+  50%      { transform: translate(-50%, calc(-50% - 2.5px)) rotate(90.8deg); }
+}
+
+/* red cross slams onto a wounded life card */
+@keyframes crossStamp {
+  0%   { transform: scale(2.6); opacity: 0; }
+  60%  { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes gambleSpin {
+  from { transform: rotate(45deg) scale(1); }
+  50%  { transform: rotate(225deg) scale(1.15); }
+  to   { transform: rotate(405deg) scale(1); }
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.85) translateY(14px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 /* floating combat text (positioned by anim.js, animated via WAAPI) */

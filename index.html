@@ -97,6 +97,9 @@
     <button id="btn-charge" class="action-btn" data-action="charge">
       <span class="action-icon">⚡</span><span class="action-label">Charge</span>
     </button>
+    <button id="btn-gamble" class="action-btn gamble" data-action="gamble" title="">
+      <span class="gamble-logo" aria-hidden="true"></span>
+    </button>
     <button id="btn-cancel" class="action-btn cancel hidden">✕ Cancel</button>
   </div>
   <div id="log" aria-live="polite"></div>
@@ -114,6 +117,14 @@
     </div>
   </div>
 </section>
+
+<!-- gamble / confirmation modal -->
+<div id="modal" class="hidden">
+  <div class="modal-panel">
+    <p id="modal-question"></p>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
 
 <!-- flying cards & floating combat text -->
 <div id="fx-layer" aria-hidden="true"></div>
