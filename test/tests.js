@@ -271,13 +271,91 @@
     s.deck = s.deck.filter(function (c) { return c.id !== j1.id; });
     var j2 = findCard(s, 0);
     s.deck.push(j1);
-    var l1 = findCard(s, 6), l2 = findCard(s, 9), chg = findCard(s, 3);
-    stackDeck(s, [j1, l1, j2, l2, chg]);
-    var ev = R.resolveCharge(s);
+    var l1 = findCard(s, 6), l2 = findCard(s, 9), sh = findCard(s, 3);
+    stackDeck(s, [j1, l1, j2, l2, sh]);
+    var ev = R.resolveChangeShield(s, 0);
     assert(findAll(ev, 'jokerDrawn').length === 2, 'jokers can chain');
     assert(findAll(ev, 'lifeGained').length === 2, 'each joker grants a life card');
     assert(a.health.length === 4, 'two extra life cards gained');
-    assert(a.charge.length === 1 && a.charge[0].id === chg.id, 'the action still completes');
+    assert(a.shield.id === sh.id, 'the action still completes');
+  })();
+
+  /* ---------------- charge jokers stay hidden until used ---------------- */
+
+  (function () {
+    // a joker drawn for a charge triggers NOTHING at charge time
+    var s = R.newGame(['A', 'B'], 30);
+    var a = s.players[0];
+    R.forceNextDraw(s, 0); // joker on top
+    var ev = R.resolveCharge(s);
+    assert(!has(ev, 'jokerDrawn') && !has(ev, 'lifeGained'), 'charging a joker reveals nothing');
+    assert(a.charge.length === 1 && a.charge[0].joker, 'the joker sits hidden in the stack');
+    assert(a.health.length === 2, 'no life gained yet');
+    assert(R.countAllCards(s) === 54, 'card conservation with hidden joker charge');
+  })();
+
+  (function () {
+    // on attack the hidden joker pays out: life card + a replacement attack card
+    var s = R.newGame(['A', 'B'], 31);
+    var a = s.players[0];
+    var joker = findCard(s, 0);
+    var five = findCard(s, 5);
+    s.deck = s.deck.filter(function (c) { return c.id !== joker.id && c.id !== five.id; });
+    a.charge = [joker, five];
+    s.players[1].shield = R.makeCard(2, 'spades');
+    s.players[1].health = [R.lifeSlot(R.makeCard(13, 'clubs')), R.lifeSlot(R.makeCard(12, 'clubs'))];
+    var atk = findCard(s, 7), lifeC = findCard(s, 4), repl = findCard(s, 6);
+    stackDeck(s, [atk, lifeC, repl]);
+    var ev = R.resolveAttack(s, 1);
+    assert(find(ev, 'chargesRevealed').cards.length === 2, 'both charges revealed on attack');
+    var jic = find(ev, 'jokerInCharge');
+    assert(jic && jic.card.joker, 'the hidden joker is revealed only now');
+    assert(find(ev, 'lifeGained').card.id === lifeC.id, 'joker pays its life card at reveal time');
+    assert(a.health.length === 3, 'attacker gained the extra life card');
+    assert(find(ev, 'attack').value === 7 + 6 + 5, 'replacement card fights in the joker\'s place');
+    assert(find(ev, 'damage').amount === 18 - 2, 'damage uses the replaced total');
+    assert(a.charge.length === 0, 'charges consumed');
+    assert(R.countAllCards(s) === 54, 'card conservation after joker charge attack');
+  })();
+
+  (function () {
+    // charges lost to a hit are burnt unrevealed-jokers and all — no payout
+    var s = R.newGame(['A', 'B'], 32);
+    var b = s.players[1];
+    var joker = findCard(s, 0);
+    s.deck = s.deck.filter(function (c) { return c.id !== joker.id; });
+    b.charge = [joker];
+    b.shield = R.makeCard(2, 'spades');
+    b.health = [R.lifeSlot(R.makeCard(10, 'clubs')), R.lifeSlot(R.makeCard(9, 'clubs'))];
+    var atk = findCard(s, 9);
+    stackDeck(s, [atk]);
+    var ev = R.resolveAttack(s, 1);
+    var cl = find(ev, 'chargesLost');
+    assert(cl && cl.cards[0].joker, 'the burnt charge stack shows its joker');
+    assert(!has(ev, 'lifeGained') && !has(ev, 'jokerInCharge'), 'a lost joker charge pays nothing');
+    assert(b.health.length === 2 && s.discard.some(function (c) { return c.joker; }),
+      'joker burnt to the pile');
+    assert(R.countAllCards(s) === 54, 'card conservation after losing a joker charge');
+  })();
+
+  /* ---------------- the counter is optional ---------------- */
+
+  (function () {
+    var s = R.newGame(['A', 'B'], 33);
+    var a = s.players[0];
+    var beforeHealth = a.health.map(function (sl) { return sl.card.id; }).join(',');
+    s.players[1].shield = R.makeCard(13, 'spades');
+    R.forceNextDraw(s, 3);
+    R.resolveAttack(s, 1);
+    assert(!!s.pending, 'counter pending after the block');
+    var deckBefore = s.deck.length;
+    var ev = R.resolveCounterSkip(s);
+    assert(has(ev, 'counterDeclined'), 'defender may decline the counter');
+    assert(!s.pending, 'pending cleared after declining');
+    assert(s.deck.length === deckBefore, 'declining draws nothing');
+    assert(a.health.map(function (sl) { return sl.card.id; }).join(',') === beforeHealth,
+      'attacker life untouched after decline');
+    assert(R.countAllCards(s) === 54, 'card conservation after decline');
   })();
 
   /* ---------------- gamble on the life ---------------- */
@@ -362,8 +440,12 @@
         if (roll < 0.55 && la.attack.length) {
           R.resolveAttack(s, la.attack[Math.floor(rng() * la.attack.length)]);
           if (s.pending) {
-            var attacker = s.players[s.pending.attackerId];
-            R.resolveCounter(s, Math.floor(rng() * attacker.health.length));
+            if (rng() < 0.25) {
+              R.resolveCounterSkip(s);
+            } else {
+              var attacker = s.players[s.pending.attackerId];
+              R.resolveCounter(s, Math.floor(rng() * attacker.health.length));
+            }
           }
         } else if (roll < 0.75) {
           R.resolveChangeShield(s, la.changeShield[Math.floor(rng() * la.changeShield.length)]);

@@ -50,6 +50,7 @@
     $('btn-charge').addEventListener('click', function () { E.chooseAction('charge'); });
     $('btn-gamble').addEventListener('click', function () { E.chooseAction('gamble'); });
     $('btn-cancel').addEventListener('click', function () { S.play('click'); E.cancelTarget(); });
+    $('btn-decline').addEventListener('click', function () { S.play('click'); E.counterDeclined(); });
 
     /* victory */
     $('btn-rematch').addEventListener('click', function () {

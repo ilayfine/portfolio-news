@@ -310,6 +310,7 @@
     $('btn-charge').disabled = !la.charge;
     $('btn-gamble').disabled = !la.gamble;
     $('btn-cancel').classList.add('hidden');
+    $('btn-decline').classList.add('hidden');
     $('btn-attack').classList.remove('hidden');
     $('btn-shield').classList.remove('hidden');
     $('btn-charge').classList.remove('hidden');
@@ -322,7 +323,19 @@
     $('btn-shield').classList.add('hidden');
     $('btn-charge').classList.add('hidden');
     $('btn-gamble').classList.add('hidden');
+    $('btn-decline').classList.add('hidden');
     $('btn-cancel').classList.remove('hidden');
+    $('action-bar').classList.remove('locked');
+  }
+
+  /* counter mode: the defender may pick a life card OR decline */
+  function showDeclineOnly() {
+    $('btn-attack').classList.add('hidden');
+    $('btn-shield').classList.add('hidden');
+    $('btn-charge').classList.add('hidden');
+    $('btn-gamble').classList.add('hidden');
+    $('btn-cancel').classList.add('hidden');
+    $('btn-decline').classList.remove('hidden');
     $('action-bar').classList.remove('locked');
   }
 
@@ -357,9 +370,9 @@
   function enterCounterMode(attackerId, defender, cb) {
     var arena = $('arena');
     arena.classList.add('dimmed');
-    lockActions();
+    showDeclineOnly();
     var col = accent(defender.id);
-    setBanner('🛡 Blocked! ' + defender.name + ' — scramble one of the foe\'s life cards', col);
+    setBanner('🛡 Blocked! ' + defender.name + ' — scramble a foe\'s life card, or decline', col);
 
     var attackerZone = $('zone-' + attackerId);
     attackerZone.classList.add('targetable'); // keeps the zone lit through the arena dim
@@ -468,7 +481,7 @@
       return A.flipInner(ghost, 180, 0, A.D.flip);
     });
     stageCards.push({ card: ev.card, el: ghost, rect: to, hidden: hidden });
-    var pause = ev.purpose === 'attack' ? 1 : ev.purpose === 'gamble' ? 1.4 : hidden ? 0.15 : 0.45;
+    var pause = ev.purpose === 'attack' ? 1 : ev.purpose === 'gamble' ? 1.4 : ev.purpose === 'chargeReplace' ? 0.6 : hidden ? 0.15 : 0.45;
     return Promise.all([fly, flip]).then(function () {
       return A.wait(A.D.stagePause * pause);
     });
@@ -550,13 +563,39 @@
       P.burst(c.x, c.y, 'charge');
       log(state.players[ev.playerId].name + ' reveals ' + ev.cards.length +
         ' hidden charge' + (ev.cards.length > 1 ? 's' : '') + '!');
-      return A.floatText(c.x, c.y - 60, '⚔ ' + ev.total, 'info', { duration: 850 });
+      return A.wait(A.D.stagePause * 0.8);
+    });
+  }
+
+  /* a joker was hiding in the revealed charges: celebrate, burn it — its life
+   * card and replacement attack card follow as ordinary draw events */
+  function playJokerInCharge(ev, state) {
+    var idx = -1;
+    for (var i = 0; i < stageCards.length; i++) {
+      if (stageCards[i].card.id === ev.card.id) { idx = i; break; }
+    }
+    var sc = idx >= 0 ? stageCards.splice(idx, 1)[0] : null;
+    var c = sc ? A.center(A.rect(sc.el)) : A.center(stageRect(0));
+    S.play('win');
+    P.burst(c.x, c.y, 'victory');
+    log(state.players[ev.playerId].name + '\'s charge hid a JOKER — an extra life card!');
+    return Promise.all([
+      A.floatText(c.x, c.y - 40, 'JOKER!', 'info'),
+      sc ? A.pulse(sc.el, 1.18) : Promise.resolve()
+    ]).then(function () {
+      if (!sc) return;
+      return A.flyGhost(sc.el, A.rect(sc.el), A.rect($('discard')), { duration: A.D.tumble, rotTo: 140 })
+        .then(function () { sc.el.remove(); setDiscardTop(ev.card); });
     });
   }
 
   function playAttack(ev, state) {
     setBanner('⚔ ' + state.players[ev.attackerId].name + ' strikes ' +
       state.players[ev.targetId].name + '!', accent(ev.attackerId));
+    if (ev.chargeCards && ev.chargeCards.length) {
+      var sc = A.center(stageRect(1));
+      A.floatText(sc.x, sc.y - 60, '⚔ ' + ev.value, 'info', { duration: 800 });
+    }
     var shieldSlotEl = shieldSlot(ev.targetId);
     var to = A.rect(shieldSlotEl);
     var flights = stageCards.map(function (sc, i) {
@@ -787,23 +826,48 @@
     });
   }
 
+  /* burnt charges are revealed on the stage for a beat, so everyone sees what
+   * was lost, then they tumble to the pile */
   function playChargesLost(ev, state) {
     var stackEl = chargeStack(ev.playerId);
     var from = A.rect(stackEl);
     setChargeCount(ev.playerId, 0);
-    var c = A.center(from);
     log(state.players[ev.playerId].name + "'s charges burn away!");
-    var jobs = ev.cards.map(function (card, i) {
-      var ghost = ghostCard(card, true);
-      return A.flyGhost(ghost, { left: from.left + i * 8, top: from.top, width: from.width, height: from.height },
-        A.rect($('discard')), { duration: A.D.tumble, rotTo: 120 + i * 30, fadeOut: true })
-        .then(function () { ghost.remove(); });
+    var ghosts = ev.cards.map(function (card, i) {
+      var ghost = ghostCard(card, false);
+      var inner = ghost.querySelector('.card-inner');
+      inner.style.transition = 'none';
+      inner.style.transform = 'rotateY(180deg)';
+      return { ghost: ghost, to: stageRect(i) };
     });
-    P.burst(c.x, c.y, 'dissolve');
-    return Promise.all(jobs).then(function () {
+    return Promise.all(ghosts.map(function (g, i) {
+      return A.flyGhost(g.ghost,
+        { left: from.left + i * 6, top: from.top, width: from.width, height: from.height },
+        g.to, { duration: 340, arc: 22, rotTo: -4 + i * 4 })
+        .then(function () { S.play('flip'); return A.flipInner(g.ghost, 180, 0, A.D.flip); });
+    })).then(function () {
+      var c = A.center(stageRect(Math.min(ghosts.length - 1, 1)));
+      P.burst(c.x, c.y, 'dissolve');
+      return Promise.all([
+        A.floatText(c.x, c.y - 44, 'CHARGES LOST', 'damage small'),
+        A.wait(A.D.stagePause)
+      ]);
+    }).then(function () {
+      var pile = A.rect($('discard'));
+      return Promise.all(ghosts.map(function (g, i) {
+        return A.flyGhost(g.ghost, A.rect(g.ghost), pile, { duration: A.D.tumble, rotTo: 140 + i * 25 })
+          .then(function () { g.ghost.remove(); });
+      }));
+    }).then(function () {
       if (state.discard.length) setDiscardTop(state.discard[state.discard.length - 1]);
-      return A.floatText(c.x, c.y - 26, 'CHARGES LOST', 'damage small');
     });
+  }
+
+  function playCounterDeclined(ev, state) {
+    var defender = state.players[ev.defenderId];
+    var zoneC = A.center(A.rect($('zone-' + ev.defenderId)));
+    log(defender.name + ' declines the counter.');
+    return A.floatText(zoneC.x, zoneC.y - 30, 'DECLINED', 'block small');
   }
 
   function playGamble(ev, state) {
@@ -874,6 +938,8 @@
       case 'jokerDrawn': return playJokerDrawn(ev, state);
       case 'lifeGained': return playLifeGained(ev, state);
       case 'chargesRevealed': return playChargesRevealed(ev, state);
+      case 'jokerInCharge': return playJokerInCharge(ev, state);
+      case 'counterDeclined': return playCounterDeclined(ev, state);
       case 'attack': return playAttack(ev, state);
       case 'damage': return playDamage(ev, state);
       case 'blocked': return playBlocked(ev, state);

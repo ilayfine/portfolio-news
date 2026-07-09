@@ -121,6 +121,18 @@
       await this.endTurn();
     },
 
+    async counterDeclined() {
+      if (this.phase !== 'COUNTER_PICK') return;
+      this.phase = 'RESOLVING';
+      UI.exitTargetMode();
+      UI.lockActions();
+      var events = R.resolveCounterSkip(this.state);
+      for (var i = 0; i < events.length; i++) {
+        await UI.playEvent(events[i], this.state);
+      }
+      await this.endTurn();
+    },
+
     async counterPicked(index) {
       if (this.phase !== 'COUNTER_PICK') return;
       this.phase = 'RESOLVING';

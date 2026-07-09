@@ -38,9 +38,10 @@ On your turn, do exactly one of:
     automatically. A card reduced to nothing is destroyed, and leftover damage
     spills onto the next-lowest card. Taking any life damage also **burns all your
     hidden charges**.
-  - If it's **equal or lower**, the attack is *blocked* — and the defender strikes
-    back: they pick one of **your** life cards, which is replaced by a random card
-    from the deck.
+  - If it's **equal or lower**, the attack is *blocked* — and the defender may
+    strike back: they pick one of **your** life cards, which is replaced by a
+    random card from the deck. (The random card can help you by accident, so the
+    defender may also **decline** and let the moment pass.)
 - **⛨ Change Shield** — replace anyone's shield (yours included) with a random card
   from the deck.
 - **⚡ Charge** — draw a card **face down** into your charge stack. Nobody sees it
@@ -52,7 +53,10 @@ On your turn, do exactly one of:
 **Jokers:** any draw that turns up a joker grants the drawer an **extra life card**
 (the next card off the deck), and then the draw continues for its original purpose.
 This applies to every action — even mid-gamble (the color call stays locked) and
-counters (there it's the defender doing the drawing who benefits).
+counters (there it's the defender doing the drawing who benefits). The exception
+is **charging**: a joker drawn into your charge stays hidden like any charge, and
+only pays out when an attack reveals it — you get the life card then, and an extra
+card is drawn to fight in the joker's place.
 
 ## Project layout
 

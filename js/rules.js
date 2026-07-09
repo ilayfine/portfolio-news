@@ -160,7 +160,9 @@
         events.push({ type: 'reshuffle', count: state.deck.length });
       }
       var card = state.deck.pop();
-      if (card.joker && beneficiaryId !== undefined && beneficiaryId !== null) {
+      // a joker drawn for a CHARGE stays hidden in the stack; it only triggers
+      // when the charge is revealed by an attack
+      if (card.joker && purpose !== 'charge' && beneficiaryId !== undefined && beneficiaryId !== null) {
         state.discard.push(card);
         events.push({ type: 'jokerDrawn', card: card, playerId: beneficiaryId, purpose: purpose });
         var lifeCard = draw(state, events, 'life', beneficiaryId); // recursion handles joker chains
@@ -218,7 +220,6 @@
    */
   function applyDamage(state, target, amount, events, byId) {
     if (amount <= 0) return;
-    loseCharges(state, target, events, 'hit');
     events.push({
       type: 'damage',
       playerId: target.id,
@@ -226,6 +227,7 @@
       newHp: Math.max(hp(target) - amount, 0),
       byId: byId
     });
+    loseCharges(state, target, events, 'hit');
     var remaining = amount;
     while (remaining > 0 && target.health.length) {
       var idx = 0;
@@ -327,10 +329,27 @@
     var drawn = draw(state, events, 'attack', attacker.id);
     var value = drawn.rank;
     var charges = attacker.charge;
+    var burnt = [drawn];
     if (charges.length) {
-      for (var i = 0; i < charges.length; i++) value += charges[i].rank;
       attacker.charge = [];
-      events.push({ type: 'chargesRevealed', playerId: attacker.id, cards: charges, total: value });
+      events.push({ type: 'chargesRevealed', playerId: attacker.id, cards: charges });
+      for (var i = 0; i < charges.length; i++) {
+        var c = charges[i];
+        if (c.joker) {
+          // a joker hiding in the charge: revealed only now — grants its life
+          // card, and an extra card is drawn to take its place in the attack
+          state.discard.push(c);
+          events.push({ type: 'jokerInCharge', playerId: attacker.id, card: c });
+          var lifeCard = draw(state, events, 'life', attacker.id);
+          addLifeCard(state, attacker.id, lifeCard, events);
+          var repl = draw(state, events, 'chargeReplace', attacker.id);
+          value += repl.rank;
+          burnt.push(repl);
+        } else {
+          value += c.rank;
+          burnt.push(c);
+        }
+      }
     }
 
     events.push({
@@ -343,8 +362,7 @@
       shield: target.shield.rank
     });
 
-    state.discard.push(drawn);
-    for (var c = 0; c < charges.length; c++) state.discard.push(charges[c]);
+    for (var b = 0; b < burnt.length; b++) state.discard.push(burnt[b]);
 
     if (value > target.shield.rank) {
       applyDamage(state, target, value - target.shield.rank, events, attacker.id);
@@ -355,6 +373,16 @@
     }
     resolvePendingSwaps(state, events);
     return events;
+  }
+
+  /* The defender declines the counter: nothing happens, play moves on. */
+  function resolveCounterSkip(state) {
+    if (!state.pending || state.pending.type !== 'counter') {
+      throw new Error('Shield: no counter pending');
+    }
+    var pending = state.pending;
+    state.pending = null;
+    return [{ type: 'counterDeclined', attackerId: pending.attackerId, defenderId: pending.defenderId }];
   }
 
   /* Defender picked which of the attacker's life cards (by index) to scramble.
@@ -499,6 +527,7 @@
     legalActions: legalActions,
     resolveAttack: resolveAttack,
     resolveCounter: resolveCounter,
+    resolveCounterSkip: resolveCounterSkip,
     resolveChangeShield: resolveChangeShield,
     resolveCharge: resolveCharge,
     resolveGamble: resolveGamble,
