@@ -41,7 +41,7 @@
 
     $('btn-begin').addEventListener('click', function () {
       S.play('click');
-      E.startMatch(UI.readNames());
+      E.startMatch(UI.readNames(), UI.readSeats());
     });
 
     /* table actions */

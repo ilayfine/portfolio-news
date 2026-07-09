@@ -19,6 +19,13 @@
 
   var stageCards = []; // ghosts currently sitting on the center stage: {card, el, rect}
   var targetCleanup = null;
+  var bots = [];       // per seat: null | 'easy' | 'medium' | 'hard'
+  var seatTypes = [null, null, null, null]; // setup-screen selections
+
+  var SEAT_LABELS = { easy: '⚙ CPU · Easy', medium: '⚙ CPU · Medium', hard: '⚙ CPU · Hard' };
+  var SEAT_CYCLE = [null, 'easy', 'medium', 'hard'];
+
+  function setBots(b) { bots = b || []; }
 
   function $(id) { return document.getElementById(id); }
 
@@ -177,7 +184,7 @@
       zone.style.setProperty('--accent', accent(p.id));
       zone.innerHTML =
         '<div class="plate">' +
-          '<span class="pname">' + escapeHtml(p.name) + '</span>' +
+          '<span class="pname">' + (bots[p.id] ? '⚙ ' : '') + escapeHtml(p.name) + '</span>' +
           '<div class="hp-orb" id="hp-' + p.id + '"><span class="hp-num">0</span></div>' +
         '</div>' +
         '<div class="slot shield-slot" id="slot-shield-' + p.id + '"><span class="slot-tag">SHIELD</span></div>' +
@@ -503,9 +510,11 @@
     ]).then(function () {
       S.play('win');
       P.burst(c.x, c.y, 'victory');
-      log(state.players[ev.playerId].name + ' finds a JOKER — an extra life card!');
+      log(state.players[ev.playerId].name + (ev.wasted
+        ? ' finds a JOKER — but their life is full!'
+        : ' finds a JOKER — an extra life card!'));
       return Promise.all([
-        A.floatText(c.x, c.y - 40, 'JOKER!', 'info'),
+        A.floatText(c.x, c.y - 40, ev.wasted ? 'JOKER! (life full)' : 'JOKER!', ev.wasted ? 'info small' : 'info'),
         A.pulse(ghost, 1.18)
       ]);
     }).then(function () {
@@ -578,7 +587,8 @@
     var c = sc ? A.center(A.rect(sc.el)) : A.center(stageRect(0));
     S.play('win');
     P.burst(c.x, c.y, 'victory');
-    log(state.players[ev.playerId].name + '\'s charge hid a JOKER — an extra life card!');
+    log(state.players[ev.playerId].name + '\'s charge hid a JOKER' +
+      (ev.wasted ? ' — but their life is full!' : ' — an extra life card!'));
     return Promise.all([
       A.floatText(c.x, c.y - 40, 'JOKER!', 'info'),
       sc ? A.pulse(sc.el, 1.18) : Promise.resolve()
@@ -880,6 +890,10 @@
 
   function playGambleResult(ev, state) {
     var me = state.players[ev.playerId];
+    if (ev.win && ev.full) {
+      log('Fate smiles, but ' + me.name + "'s life is already full — the card burns.");
+      return disposeStageToDiscard(state);
+    }
     if (ev.win) {
       log('Fate smiles — the ' + ev.card.label + ' joins ' + me.name + "'s life!");
       return flyStageCardToNewLifeSlot(ev.playerId, ev.card, ev.newHp);
@@ -893,6 +907,15 @@
     ]).then(function () {
       return disposeStageToDiscard(state);
     });
+  }
+
+  function playSuddenDeath(ev, state) {
+    var winner = state.players[ev.playerId];
+    log('The deck runs dry — ' + winner.name + ' holds the most life!');
+    setBanner('The deck runs dry!', accent(ev.playerId));
+    var c = { x: global.innerWidth / 2, y: global.innerHeight / 2 };
+    S.play('reshuffle');
+    return A.floatText(c.x, c.y - 60, 'SUDDEN DEATH', 'info');
   }
 
   function playEliminated(ev, state) {
@@ -952,6 +975,7 @@
       case 'chargesLost': return playChargesLost(ev, state);
       case 'gamble': return playGamble(ev, state);
       case 'gambleResult': return playGambleResult(ev, state);
+      case 'suddenDeath': return playSuddenDeath(ev, state);
       case 'eliminated': return playEliminated(ev, state);
       case 'win': return A.wait(500);
       case 'turnStart': return Promise.resolve();
@@ -980,6 +1004,11 @@
 
   /* ---------------- setup screen ---------------- */
 
+  function paintSeatBtn(btn, type) {
+    btn.textContent = type ? SEAT_LABELS[type] : '⚔ Human';
+    btn.className = 'seat-btn' + (type ? ' cpu-' + type : '');
+  }
+
   function renderNameInputs(count) {
     var wrap = $('name-inputs');
     var existing = [];
@@ -992,9 +1021,25 @@
       row.innerHTML =
         '<span class="name-sigil"></span>' +
         '<input class="name-input" data-idx="' + i + '" maxlength="14" placeholder="' +
-        DEFAULT_NAMES[i] + '" value="' + (existing[i] ? escapeHtml(existing[i]) : '') + '">';
+        DEFAULT_NAMES[i] + '" value="' + (existing[i] ? escapeHtml(existing[i]) : '') + '">' +
+        '<button class="seat-btn" data-idx="' + i + '"></button>';
       wrap.appendChild(row);
+      var btn = row.querySelector('.seat-btn');
+      paintSeatBtn(btn, seatTypes[i]);
+      btn.addEventListener('click', (function (idx, b) {
+        return function () {
+          S.play('click');
+          var next = SEAT_CYCLE[(SEAT_CYCLE.indexOf(seatTypes[idx]) + 1) % SEAT_CYCLE.length];
+          seatTypes[idx] = next;
+          paintSeatBtn(b, next);
+        };
+      })(i, btn));
     }
+  }
+
+  function readSeats() {
+    var n = document.querySelectorAll('.name-input').length;
+    return seatTypes.slice(0, n);
   }
 
   function readNames() {
@@ -1008,6 +1053,8 @@
 
   global.Shield.ui = {
     ACCENTS: ACCENTS,
+    setBots: setBots,
+    readSeats: readSeats,
     showScreen: showScreen,
     buildTable: buildTable,
     syncAll: syncAll,

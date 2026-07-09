@@ -9,14 +9,21 @@
   var R = global.Shield.rules;
   var UI = global.Shield.ui;
 
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
   var engine = {
     phase: 'TITLE',
     state: null,
     names: [],
+    bots: [],        // per seat: null | 'easy' | 'medium' | 'hard'
     seed: undefined, // set by main.js in debug mode
 
-    async startMatch(names) {
+    isBot(id) { return !!this.bots[id]; },
+
+    async startMatch(names, bots) {
       this.names = names.slice();
+      this.bots = (bots || []).slice();
+      UI.setBots(this.bots);
       this.state = R.newGame(names, this.seed);
       UI.buildTable(this.state);
       UI.lockActions();
@@ -31,8 +38,28 @@
       this.phase = 'TURN_START';
       var p = R.currentPlayer(this.state);
       await UI.announceTurn(p, this.state);
+      if (this.isBot(p.id)) return this.botTurn(p);
       this.phase = 'CHOOSE_ACTION';
       UI.unlockActions(this.state);
+    },
+
+    /* a CPU seat takes its turn through the exact same resolve paths */
+    async botTurn(p) {
+      this.phase = 'BOT_TURN';
+      UI.lockActions();
+      await wait(650); // a beat of "thinking"
+      var mv = await global.Shield.ai.choose(this.state, p.id, this.bots[p.id]);
+      if (this.phase !== 'BOT_TURN') return;
+      var state = this.state;
+      if (mv.type === 'attack') {
+        await this.resolve(function () { return R.resolveAttack(state, mv.target); });
+      } else if (mv.type === 'shield') {
+        await this.resolve(function () { return R.resolveChangeShield(state, mv.target); });
+      } else if (mv.type === 'charge') {
+        await this.resolve(function () { return R.resolveCharge(state); });
+      } else {
+        await this.resolve(function () { return R.resolveGamble(state, mv.guess); });
+      }
     },
 
     chooseAction(kind) {
@@ -113,6 +140,15 @@
         this.phase = 'COUNTER_PICK';
         var self = this;
         var defender = this.state.players[counter.defenderId];
+        if (this.isBot(defender.id)) {
+          UI.setBanner('\u{1F6E1} ' + defender.name + ' weighs a counter\u2026', UI.accent(defender.id));
+          await wait(800);
+          var pick = await global.Shield.ai.chooseCounter(this.state, defender.id, this.bots[defender.id]);
+          if (this.phase !== 'COUNTER_PICK') return;
+          if (pick === null) await this.counterDeclined();
+          else await this.counterPicked(pick);
+          return;
+        }
         UI.enterCounterMode(counter.attackerId, defender, function (slot) {
           self.counterPicked(slot);
         });
@@ -151,12 +187,20 @@
         await UI.showVictory(this.state.players[this.state.winnerId]);
         return;
       }
-      R.advanceTurn(this.state);
+      var events = R.advanceTurn(this.state);
+      for (var i = 0; i < events.length; i++) {
+        await UI.playEvent(events[i], this.state);
+      }
+      if (this.state.winnerId !== null) {
+        this.phase = 'VICTORY';
+        await UI.showVictory(this.state.players[this.state.winnerId]);
+        return;
+      }
       await this.turnStart();
     },
 
     rematch() {
-      this.startMatch(this.names);
+      this.startMatch(this.names, this.bots);
     }
   };
 

@@ -469,6 +469,161 @@
     assert(terminated, 'fuzz: every random game terminated (max turns: ' + maxTurns + ') ' + msg);
   })();
 
+
+  (function () {
+    // degenerate endgame: only jokers circulate -> they draw as worthless
+    // cards instead of looping forever on their life-gift
+    var s = R.newGame(['A', 'B'], 17);
+    // lock every real card on the tables: pile them into A's life row
+    var jokers = [];
+    while (s.deck.length) {
+      var c = s.deck.pop();
+      if (c.joker) jokers.push(c); else s.players[0].health.push(R.lifeSlot(c));
+    }
+    s.deck = [jokers[0]];
+    s.discard = [jokers[1]];
+    var ev = R.resolveChangeShield(s, 0); // must terminate, not recurse forever
+    assert(s.players[0].shield.joker, 'powerless joker is drawn as a rank-0 card');
+    assert(!ev.some(function (e) { return e.type === 'lifeGained'; }),
+      'no life gift when no real cards remain');
+    assert(R.countAllCards(s) === 54, 'card conservation in the joker-only endgame');
+  })();
+
+  (function () {
+    // total exhaustion: every card locked on tables -> sudden death at the
+    // turn boundary, highest life wins
+    var s = R.newGame(['A', 'B'], 18);
+    while (s.deck.length) s.players[0].health.push(R.lifeSlot(s.deck.pop()));
+    s.discard = [];
+    var ev = R.advanceTurn(s);
+    assert(has(ev, 'suddenDeath') && has(ev, 'win'), 'dry deck triggers sudden death');
+    assert(s.winnerId === 0, 'the healthiest champion is crowned');
+  })();
+
+  (function () {
+    // life-row cap: gifts and winnings fizzle at MAX_LIFE cards
+    var s = R.newGame(['A', 'B'], 19);
+    var a = s.players[0];
+    while (a.health.length < R.MAX_LIFE) {
+      a.health.push(R.lifeSlot(s.deck.pop()));
+    }
+    var joker = findCard(s, 0);
+    var next = null;
+    for (var i = s.deck.length - 1; i >= 0; i--) if (!s.deck[i].joker) { next = s.deck[i]; break; }
+    stackDeck(s, [joker, next]);
+    var ev = R.resolveChangeShield(s, 0);
+    var jd = find(ev, 'jokerDrawn');
+    assert(jd && jd.wasted, 'joker at a full life row is wasted');
+    assert(!has(ev, 'lifeGained'), 'no gift past the cap');
+    assert(a.health.length === R.MAX_LIFE, 'life row stays at the cap');
+    assert(R.countAllCards(s) === 54, 'card conservation at the cap');
+
+    stackDeck(s, [findCard(s, 8, { red: true })]);
+    var ev2 = R.resolveGamble(s, 'red');
+    var gr = find(ev2, 'gambleResult');
+    assert(gr.win && gr.full, 'gamble win at the cap is called out');
+    assert(a.health.length === R.MAX_LIFE, 'won card burns instead of joining a full row');
+    assert(R.countAllCards(s) === 54, 'card conservation after capped gamble win');
+  })();
+
+  /* ---------------- CPU opponents (Node only: needs ai.js) ---------------- */
+
+  if (typeof window === 'undefined') {
+    require('../js/ai.js');
+    var AI = global.Shield.ai;
+
+    /* play a full game with the given per-seat difficulties; returns winnerId */
+    function botGame(diffs, seed, opts) {
+      var names = diffs.map(function (d, i) { return 'P' + i; });
+      var s = R.newGame(names, seed);
+      opts = Object.assign({}, opts, { rng: R.makeRng(opts.seed), seed: undefined });
+      var turns = 0;
+      while (s.winnerId === null && turns < 600) {
+        turns++;
+        var pid = s.currentIdx;
+        var mv = AI.chooseSync(s, pid, diffs[pid], opts);
+        if (mv.type === 'attack') {
+          R.resolveAttack(s, mv.target);
+          if (s.pending) {
+            var did = s.pending.defenderId;
+            var pick = AI.chooseCounterSync(s, did, diffs[did], opts);
+            if (pick === null) R.resolveCounterSkip(s);
+            else R.resolveCounter(s, pick);
+          }
+        } else if (mv.type === 'shield') {
+          R.resolveChangeShield(s, mv.target);
+        } else if (mv.type === 'charge') {
+          R.resolveCharge(s);
+        } else {
+          R.resolveGamble(s, mv.guess);
+        }
+        if (R.countAllCards(s) !== 54) throw new Error('conservation broke');
+        if (s.winnerId === null) R.advanceTurn(s);
+      }
+      if (s.winnerId === null) throw new Error('bot game never ended');
+      return s.winnerId;
+    }
+
+    (function () {
+      // bots of every tier finish real games legally, at 2-4 seats
+      var ok = true, msg = '';
+      try {
+        botGame(['easy', 'medium'], 501, { seed: 1, sims: 16 });
+        botGame(['hard', 'easy', 'medium'], 502, { seed: 2, sims: 16 });
+        botGame(['medium', 'hard', 'easy', 'medium'], 503, { seed: 3, sims: 16 });
+        botGame(['hard', 'hard'], 504, { seed: 4, sims: 16 });
+      } catch (e) { ok = false; msg = e.message; }
+      assert(ok, 'bots play full legal games at every difficulty ' + msg);
+    })();
+
+    (function () {
+      // the hard bot takes a kill that wins the game on the spot
+      var s = R.newGame(['A', 'B'], 600);
+      s.players[1].shield = R.makeCard(1, 'spades');
+      s.players[1].health = [R.lifeSlot(R.makeCard(1, 'clubs'))];   // any draw >= 2 ends it
+      var mv = AI.chooseSync(s, 0, 'hard', { seed: 7, sims: 100 });
+      assert(mv.type === 'attack' && mv.target === 1, 'hard bot takes the game-winning kill');
+    })();
+
+    (function () {
+      // counter heuristic: scramble a King, decline over a 2
+      var s = R.newGame(['A', 'B'], 601);
+      s.players[0].health = [R.lifeSlot(R.makeCard(13, 'clubs')), R.lifeSlot(R.makeCard(9, 'clubs'))];
+      s.pending = { type: 'counter', attackerId: 0, defenderId: 1 };
+      assert(AI.counterChoice(s) === 0, 'counter heuristic scrambles the King');
+      s.players[0].health = [R.lifeSlot(R.makeCard(2, 'clubs')), R.lifeSlot(R.makeCard(3, 'clubs'))];
+      assert(AI.counterChoice(s) === null, 'counter heuristic declines over small cards');
+    })();
+
+    (function () {
+      // simulations must not peek: determinize keeps composition, not order
+      var s = R.newGame(['A', 'B'], 602);
+      s.players[0].charge = [s.deck.pop(), s.deck.pop()];
+      var clone = AI.cloneState(s, R.makeRng(9));
+      AI.determinize(clone, R.makeRng(9));
+      var ids = function (st) {
+        var all = st.deck.map(function (c) { return c.id; });
+        st.players.forEach(function (p) { p.charge.forEach(function (c) { all.push(c.id); }); });
+        return all.sort().join(',');
+      };
+      assert(ids(clone) === ids(s), 'determinize preserves the unseen card pool');
+      assert(clone.players[0].charge.length === 2, 'determinize preserves charge counts');
+      assert(R.countAllCards(clone) === 54, 'determinized clone conserves all 54 cards');
+    })();
+
+    (function () {
+      // strength: hard (reduced sims) must clearly beat easy across a mini-tournament
+      var hardWins = 0, games = 24;
+      for (var g = 0; g < games; g++) {
+        var hardSeat = g % 2; // alternate first player
+        var diffs = hardSeat === 0 ? ['hard', 'easy'] : ['easy', 'hard'];
+        var w = botGame(diffs, 700 + g, { seed: 40 + g, sims: 24 });
+        if (w === hardSeat) hardWins++;
+      }
+      assert(hardWins >= 15, 'hard bot dominates easy (' + hardWins + '/' + games + ' wins)');
+    })();
+  }
+
   /* ---------------- report ---------------- */
 
   var passed = results.filter(function (r) { return r.pass; }).length;

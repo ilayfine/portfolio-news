@@ -1,6 +1,7 @@
 # ⚔ SHIELD
 
-A medieval castle card game for **2–4 players on one screen** (hot-seat), played with a
+A medieval castle card game for **2–4 players on one screen** (hot-seat, with optional
+CPU opponents), played with a
 54-card deck (jokers included) — mossy castle walls, flickering torches, a round wooden table, and
 chunky parchment cards with playful, snappy animations. Pure HTML/CSS/JS — no build step, no dependencies, no server.
 
@@ -16,6 +17,19 @@ Epic medieval background music starts with your first click — toggle it with t
 button (bottom-right), and sound effects with the ♪ button below it. Both
 preferences are remembered. All audio is synthesized live with WebAudio — the game
 ships zero sound files.
+
+## CPU opponents
+
+Any seat can be handed to the computer: on the setup screen, click the button next
+to a name to cycle **Human → CPU Easy → CPU Medium → CPU Hard**. Bots play through
+the same animations you do (⚙ marks them at the table), take counters, and gamble
+when desperate. Mix humans and bots freely — or set every seat to CPU and watch.
+
+- **Easy** blunders often. **Medium** plays solid card-counting heuristics.
+- **Hard** runs Monte Carlo simulations for every decision: it evaluates each legal
+  move by playing out hundreds of possible futures (with the unseen cards reshuffled
+  each time — it cannot peek), and picks the move that wins most. In testing it beats
+  Easy ~85% and Medium ~61% of head-to-head games.
 
 ## Rules
 
@@ -64,6 +78,7 @@ card is drawn to fight in the joker's place.
 index.html        screens & markup (plain <script> tags — works over file://)
 css/              theme, layout, cards, effects
 js/rules.js       pure game logic (no DOM) — emits event lists
+js/ai.js          CPU players: heuristics + determinized Monte Carlo search
 js/engine.js      turn/phase state machine
 js/ui.js          rendering + event→animation playback
 js/anim.js        Web-Animations-API toolkit (flips, flights, shakes, floats)

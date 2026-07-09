@@ -85,6 +85,7 @@
   }
 
   var DECK_SIZE = 54;
+  var MAX_LIFE = 8; // life-row cap: extra gifts/winnings fizzle when full
 
   function shuffle(arr, rng) {
     for (var i = arr.length - 1; i > 0; i--) {
@@ -137,10 +138,18 @@
       deck: deck,
       discard: [],
       currentIdx: 0,
+      turn: 0,         // completed turns, for pacing-aware players
       pending: null,   // {type:'counter', attackerId, defenderId} while waiting for defender pick
       winnerId: null,
       rng: rng
     };
+  }
+
+  /* any non-joker card still outside the players' tables? */
+  function hasRealCardLoose(state) {
+    for (var i = 0; i < state.deck.length; i++) if (!state.deck[i].joker) return true;
+    for (var j = 0; j < state.discard.length; j++) if (!state.discard[j].joker) return true;
+    return false;
   }
 
   /* Single draw choke point.
@@ -150,9 +159,12 @@
    * Returns a non-joker card.
    */
   function draw(state, events, purpose, beneficiaryId) {
+    var owedGifts = 0; // life cards owed by jokers turned up along the way
     for (;;) {
       if (state.deck.length === 0) {
         if (state.discard.length === 0) {
+          // unreachable: every entry point guarantees a card is available and
+          // the loop below never consumes the last card for a gift
           throw new Error('Shield: deck and discard both empty');
         }
         state.deck = shuffle(state.discard, state.rng);
@@ -160,14 +172,29 @@
         events.push({ type: 'reshuffle', count: state.deck.length });
       }
       var card = state.deck.pop();
-      // a joker drawn for a CHARGE stays hidden in the stack; it only triggers
-      // when the charge is revealed by an attack
-      if (card.joker && purpose !== 'charge' && beneficiaryId !== undefined && beneficiaryId !== null) {
+      // A joker owes the drawer an extra life card, then the draw continues
+      // (jokers chain by accumulating owed gifts). Exceptions: a joker drawn
+      // for a CHARGE stays hidden in the stack, and a joker is powerless
+      // (drawn as a worthless rank-0 card) once every real card is locked on
+      // the players' tables.
+      if (card.joker && purpose !== 'charge' &&
+          beneficiaryId !== undefined && beneficiaryId !== null &&
+          hasRealCardLoose(state)) {
         state.discard.push(card);
-        events.push({ type: 'jokerDrawn', card: card, playerId: beneficiaryId, purpose: purpose });
-        var lifeCard = draw(state, events, 'life', beneficiaryId); // recursion handles joker chains
-        addLifeCard(state, beneficiaryId, lifeCard, events);
-        continue; // redraw for the original purpose
+        var full = state.players[beneficiaryId].health.length >= MAX_LIFE;
+        events.push({ type: 'jokerDrawn', card: card, playerId: beneficiaryId, purpose: purpose, wasted: full });
+        if (!full) owedGifts++;
+        continue;
+      }
+      // pay an owed gift with this card — but only while at least one card
+      // remains, so the ORIGINAL draw always completes (unpaid gifts fizzle)
+      if (owedGifts > 0 && !card.joker &&
+          state.players[beneficiaryId].health.length < MAX_LIFE &&
+          state.deck.length + state.discard.length >= 1) {
+        owedGifts--;
+        events.push({ type: 'draw', card: card, purpose: 'life' });
+        addLifeCard(state, beneficiaryId, card, events);
+        continue;
       }
       events.push({ type: 'draw', card: card, purpose: purpose });
       return card;
@@ -338,13 +365,22 @@
         if (c.joker) {
           // a joker hiding in the charge: revealed only now — grants its life
           // card, and an extra card is drawn to take its place in the attack
+          // (each gift only while any card remains to be drawn)
           state.discard.push(c);
-          events.push({ type: 'jokerInCharge', playerId: attacker.id, card: c });
-          var lifeCard = draw(state, events, 'life', attacker.id);
-          addLifeCard(state, attacker.id, lifeCard, events);
-          var repl = draw(state, events, 'chargeReplace', attacker.id);
-          value += repl.rank;
-          burnt.push(repl);
+          events.push({
+            type: 'jokerInCharge', playerId: attacker.id, card: c,
+            wasted: attacker.health.length >= MAX_LIFE
+          });
+          if (attacker.health.length < MAX_LIFE &&
+              state.deck.length + state.discard.length > 0) {
+            var lifeCard = draw(state, events, 'life', attacker.id);
+            addLifeCard(state, attacker.id, lifeCard, events);
+          }
+          if (state.deck.length + state.discard.length > 0) {
+            var repl = draw(state, events, 'chargeReplace', attacker.id);
+            value += repl.rank;
+            burnt.push(repl);
+          }
         } else {
           value += c.rank;
           burnt.push(c);
@@ -460,8 +496,10 @@
     var card = draw(state, events, 'gamble', me.id);
     var win = (card.red ? 'red' : 'black') === guess;
     if (win) {
-      me.health.push(lifeSlot(card));
-      events.push({ type: 'gambleResult', playerId: me.id, card: card, guess: guess, win: true, newHp: hp(me) });
+      var full = me.health.length >= MAX_LIFE;
+      if (full) state.discard.push(card);
+      else me.health.push(lifeSlot(card));
+      events.push({ type: 'gambleResult', playerId: me.id, card: card, guess: guess, win: true, full: full, newHp: hp(me) });
     } else {
       state.discard.push(card);
       events.push({ type: 'gambleResult', playerId: me.id, card: card, guess: guess, win: false });
@@ -474,6 +512,21 @@
 
   function advanceTurn(state) {
     if (state.winnerId !== null) return [];
+    // sudden death: the deck and burnt pile have run completely dry (every
+    // card is locked on the tables) — the healthiest champion is crowned
+    if (state.deck.length + state.discard.length === 0) {
+      var alive = alivePlayers(state);
+      var best = alive[0];
+      for (var a = 1; a < alive.length; a++) {
+        if (hp(alive[a]) > hp(best)) best = alive[a];
+      }
+      state.winnerId = best.id;
+      return [
+        { type: 'suddenDeath', playerId: best.id },
+        { type: 'win', playerId: best.id }
+      ];
+    }
+    state.turn = (state.turn || 0) + 1;
     var n = state.players.length;
     var idx = state.currentIdx;
     for (var step = 1; step <= n; step++) {
@@ -514,6 +567,7 @@
   global.Shield.rules = {
     SUITS: SUITS,
     DECK_SIZE: DECK_SIZE,
+    MAX_LIFE: MAX_LIFE,
     makeCard: makeCard,
     makeJoker: makeJoker,
     buildDeck: buildDeck,
