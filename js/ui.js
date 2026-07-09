@@ -22,8 +22,8 @@
   var bots = [];       // per seat: null | 'easy' | 'medium' | 'hard'
   var seatTypes = [null, null, null, null]; // setup-screen selections
 
-  var SEAT_LABELS = { easy: '⚙ CPU · Easy', medium: '⚙ CPU · Medium', hard: '⚙ CPU · Hard' };
-  var SEAT_CYCLE = [null, 'easy', 'medium', 'hard'];
+  var SEAT_LABELS = { easy: '⚙ CPU · Easy', medium: '⚙ CPU · Medium', hard: '⚙ CPU · Hard', impossible: '☠ Impossible' };
+  var SEAT_CYCLE = [null, 'easy', 'medium', 'hard', 'impossible'];
 
   function setBots(b) { bots = b || []; }
 

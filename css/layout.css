@@ -238,6 +238,11 @@
 .seat-btn.cpu-easy { background: linear-gradient(178deg, #6fce7c, var(--btn-green) 55%, #379343); }
 .seat-btn.cpu-medium { background: linear-gradient(178deg, #ffc862, var(--btn-orange) 55%, #e08c14); }
 .seat-btn.cpu-hard { background: linear-gradient(178deg, #ff6b5f, var(--btn-red) 55%, #c93333); }
+.seat-btn.cpu-impossible {
+  background: linear-gradient(178deg, #6b5fc9, #43287c 55%, #241638);
+  text-shadow: -1px 0 0 #241610, 1px 0 0 #241610, 0 -1px 0 #241610, 0 1px 0 #241610,
+    0 0 10px rgba(138, 95, 201, 0.8);
+}
 
 /* ---------------- table / arena ---------------- */
 

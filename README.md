@@ -21,15 +21,20 @@ ships zero sound files.
 ## CPU opponents
 
 Any seat can be handed to the computer: on the setup screen, click the button next
-to a name to cycle **Human → CPU Easy → CPU Medium → CPU Hard**. Bots play through
-the same animations you do (⚙ marks them at the table), take counters, and gamble
-when desperate. Mix humans and bots freely — or set every seat to CPU and watch.
+to a name to cycle **Human → CPU Easy → CPU Medium → CPU Hard → ☠ Impossible**. Bots
+play through the same animations you do (⚙ marks them at the table), take counters,
+and gamble when desperate. Mix humans and bots freely — or set every seat to CPU
+and watch.
 
-- **Easy** blunders often. **Medium** plays solid card-counting heuristics.
-- **Hard** runs Monte Carlo simulations for every decision: it evaluates each legal
-  move by playing out hundreds of possible futures (with the unseen cards reshuffled
-  each time — it cannot peek), and picks the move that wins most. In testing it beats
-  Easy ~85% and Medium ~61% of head-to-head games.
+- **Easy** blunders half the time. **Medium** plays solid card-counting heuristics.
+- **Hard** and **☠ Impossible** run paired Monte Carlo search: every legal move is
+  evaluated by simulating complete games against the same set of possible worlds
+  (the unseen cards reshuffled per world — they cannot peek), and the move that
+  wins the most futures is played. Impossible thinks ~14× harder than Hard
+  (roughly 3,000–6,000 simulated games per decision, still well under a second).
+- Measured ladder over 80-game head-to-head matches: Medium beats Easy ~71%,
+  Hard beats Medium ~59%, Impossible beats Hard ~57% (and Medium ~69%). Shield
+  rolls a lot of dice — no bot can escape the luck of the draw entirely.
 
 ## Rules
 

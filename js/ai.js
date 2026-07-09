@@ -1,13 +1,15 @@
 /* SHIELD — ai.js
- * CPU opponents. Three tiers:
- *   easy   — heuristics with frequent blunders
- *   medium — straight heuristics
- *   hard   — flat Monte Carlo: every legal move is evaluated by simulating
- *            many random continuations (determinized: the unseen cards —
- *            deck order and everyone's hidden charges — are reshuffled per
- *            simulation so the bot cannot peek), with rollouts played by an
- *            ε-randomized heuristic policy and a UCB1 allocator spending
- *            extra simulations on close decisions.
+ * CPU opponents. Four tiers:
+ *   easy       — heuristics with frequent blunders
+ *   medium     — straight heuristics
+ *   hard       — paired flat Monte Carlo: every legal move is evaluated by
+ *                simulating complete games against COMMON sampled worlds
+ *                (the unseen cards — deck order and everyone's hidden
+ *                charges — reshuffled per world, identically for every
+ *                candidate move, so shuffle luck cancels between moves and
+ *                the bot cannot peek), with rollouts played by an
+ *                ε-randomized heuristic policy.
+ *   impossible — the same search with ~14x the simulation budget.
  *
  * Pure logic on top of Shield.rules — no DOM. Works in Node for tests.
  * The async choose()/chooseCounter() wrappers yield to the event loop so
@@ -24,8 +26,10 @@
     mediumEps: 0.08,
     rolloutEps: 0.2,
     rolloutMaxTurns: 50,
-    simsPerMove: 140,      // hard: budget per root move
-    counterSims: 60,       // hard: budget per counter option
+    simsPerMove: 45,       // hard: paired-sim budget per root move
+    counterSims: 25,       // hard: budget per counter option
+    simsPerMoveImpossible: 650,  // impossible: ~14x the thinking
+    counterSimsImpossible: 280,
     ucb: 0.7,
     minPerMove: 6,         // explore every move at least this much first
     yieldEvery: 60         // async: yield to the event loop every N sims
@@ -272,26 +276,24 @@
     return scoreState(sim, pid);
   }
 
-  /* UCB1 over arms, sync core; onYield (if given) is awaited periodically */
+  /* Paired flat Monte Carlo with common random numbers: each "round" deals
+   * ONE possible world (same shuffle of the unseen cards, same rollout seed)
+   * and evaluates EVERY candidate move against it. Shuffle luck then cancels
+   * between moves, so their true difference emerges with far fewer
+   * simulations than independent sampling. */
   function mcPick(state, pid, arms, simsPerArm, rng) {
     var budget = simsPerArm * arms.length;
     var done = 0;
+    var armIdx = 0;
+    var worldSeed = 0;
     function oneRound() {
-      var pick = null;
-      for (var i = 0; i < arms.length; i++) {
-        if (arms[i].n < CFG.minPerMove) { pick = arms[i]; break; }
-      }
-      if (!pick) {
-        var bestU = -Infinity;
-        for (var j = 0; j < arms.length; j++) {
-          var a = arms[j];
-          var u = a.sum / a.n + CFG.ucb * Math.sqrt(Math.log(done + 1) / a.n);
-          if (u > bestU) { bestU = u; pick = a; }
-        }
-      }
-      pick.sum += simulate(state, pid, pick.prep, rng);
-      pick.n++;
+      if (armIdx === 0) worldSeed = Math.floor(rng() * 0x7fffffff);
+      var arm = arms[armIdx];
+      var worldRng = R.makeRng(worldSeed); // identical world for every arm
+      arm.sum += simulate(state, pid, arm.prep, worldRng);
+      arm.n++;
       done++;
+      armIdx = (armIdx + 1) % arms.length;
     }
     return {
       step: oneRound,
@@ -355,6 +357,20 @@
     return arms;
   }
 
+  function isSearchTier(difficulty) {
+    return difficulty === 'hard' || difficulty === 'impossible';
+  }
+
+  function moveBudget(difficulty, opts) {
+    if (opts.sims) return opts.sims;
+    return difficulty === 'impossible' ? CFG.simsPerMoveImpossible : CFG.simsPerMove;
+  }
+
+  function counterBudget(difficulty, opts) {
+    if (opts.sims) return opts.sims;
+    return difficulty === 'impossible' ? CFG.counterSimsImpossible : CFG.counterSims;
+  }
+
   function chooseSync(state, pid, difficulty, opts) {
     opts = opts || {};
     var rng = opts.rng || R.makeRng(opts.seed);
@@ -362,16 +378,16 @@
     if (difficulty === 'medium') return heuristicMove(state, pid, rng, CFG.mediumEps);
     var arms = moveArms(state, pid);
     if (arms.length === 1) return arms[0].mv;
-    return runSync(mcPick(state, pid, arms, opts.sims || CFG.simsPerMove, rng)).mv;
+    return runSync(mcPick(state, pid, arms, moveBudget(difficulty, opts), rng)).mv;
   }
 
   function choose(state, pid, difficulty, opts) {
     opts = opts || {};
-    if (difficulty !== 'hard') return Promise.resolve(chooseSync(state, pid, difficulty, opts));
+    if (!isSearchTier(difficulty)) return Promise.resolve(chooseSync(state, pid, difficulty, opts));
     var rng = opts.rng || R.makeRng(opts.seed);
     var arms = moveArms(state, pid);
     if (arms.length === 1) return Promise.resolve(arms[0].mv);
-    return runAsync(mcPick(state, pid, arms, opts.sims || CFG.simsPerMove, rng))
+    return runAsync(mcPick(state, pid, arms, moveBudget(difficulty, opts), rng))
       .then(function (a) { return a.mv; });
   }
 
@@ -384,14 +400,14 @@
       return Math.floor(rng() * attacker.health.length);
     }
     if (difficulty === 'medium') return counterChoice(state);
-    return runSync(mcPick(state, pid, counterArms(state, pid), opts.sims || CFG.counterSims, rng)).mv;
+    return runSync(mcPick(state, pid, counterArms(state, pid), counterBudget(difficulty, opts), rng)).mv;
   }
 
   function chooseCounter(state, pid, difficulty, opts) {
     opts = opts || {};
-    if (difficulty !== 'hard') return Promise.resolve(chooseCounterSync(state, pid, difficulty, opts));
+    if (!isSearchTier(difficulty)) return Promise.resolve(chooseCounterSync(state, pid, difficulty, opts));
     var rng = opts.rng || R.makeRng(opts.seed);
-    return runAsync(mcPick(state, pid, counterArms(state, pid), opts.sims || CFG.counterSims, rng))
+    return runAsync(mcPick(state, pid, counterArms(state, pid), counterBudget(difficulty, opts), rng))
       .then(function (a) { return a.mv; });
   }
 
