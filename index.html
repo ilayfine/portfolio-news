@@ -2,17 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SHIELD — a card game of steel and fortune</title>
 <meta name="description" content="Shield — a dark fantasy hot-seat card game for 2–4 players.">
+<meta name="theme-color" content="#221610">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shield">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 6 88 20v28c0 24-16 39-38 46C28 87 12 72 12 48V20Z' fill='%23150f22' stroke='%23d4a94e' stroke-width='6'/%3E%3Ctext x='50' y='64' font-size='38' text-anchor='middle' fill='%23d4a94e'%3E%E2%9A%94%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/theme.css">
-<link rel="stylesheet" href="css/layout.css">
-<link rel="stylesheet" href="css/cards.css">
-<link rel="stylesheet" href="css/fx.css">
+<link rel="stylesheet" href="css/theme.css?v=10">
+<link rel="stylesheet" href="css/layout.css?v=10">
+<link rel="stylesheet" href="css/cards.css?v=10">
+<link rel="stylesheet" href="css/fx.css?v=10">
+<link rel="stylesheet" href="css/lab.css?v=10">
 </head>
 <body>
 
@@ -45,6 +53,7 @@
     <h1 class="game-title">SHIELD</h1>
     <p class="tagline">a duel of steel &amp; fortune</p>
     <button id="btn-play" class="btn btn-primary">Enter the Arena</button>
+    <button id="btn-lab" class="btn btn-ghost">⚖ War Council · analyze a position</button>
     <p class="title-hint">2–4 players &middot; one screen &middot; last one standing wins</p>
   </div>
 </section>
@@ -106,6 +115,75 @@
   <div id="log" aria-live="polite"></div>
 </section>
 
+<!-- ═════════ WAR COUNCIL (EV analysis table) ═════════ -->
+<section id="screen-lab" class="screen">
+  <div id="lab-topbar">
+    <h2 class="lab-title">⚖ The War Council</h2>
+    <div id="lab-banner"></div>
+    <div id="lab-count" class="count-picker small" role="group" aria-label="Number of players">
+      <button class="count-btn active" data-count="2">2</button>
+      <button class="count-btn" data-count="3">3</button>
+      <button class="count-btn" data-count="4">4</button>
+    </div>
+    <button id="lab-back" class="btn btn-ghost small">Back</button>
+  </div>
+
+  <div id="lab-body">
+    <!-- ── the table ── -->
+    <div id="lab-arena">
+      <div class="arena-ring" aria-hidden="true"></div>
+      <div id="lab-table-center">
+        <div class="pile">
+          <div class="deck-stack">
+            <div class="card mini back-only"></div>
+            <div class="card mini back-only"></div>
+            <div class="card mini back-only"></div>
+          </div>
+          <span id="lab-deck-count" class="pile-count"></span>
+        </div>
+        <div id="lab-burnt-pile">
+          <div id="lab-burnt-chips"></div>
+          <span class="pile-tag">BURNT PILE</span>
+        </div>
+      </div>
+      <!-- seats injected by lab.js -->
+    </div>
+
+    <!-- ── the oracle, docked ── -->
+    <aside id="lab-panel">
+      <div id="lab-turn"></div>
+      <div id="lab-line"></div>
+      <div class="lab-think">
+        <label for="lab-think">🧠 Think time <span id="lab-think-label"></span></label>
+        <input type="range" id="lab-think" min="500" max="10000" step="250" value="2000">
+      </div>
+      <div id="lab-navbar" class="hidden">
+        <button id="lab-first" title="first move (Home)">⏮</button>
+        <button id="lab-prev" title="previous move (←)">◀</button>
+        <span id="lab-move-num"></span>
+        <button id="lab-next" title="next move (→)">▶</button>
+        <button id="lab-last" title="final position (End)">⏭</button>
+      </div>
+      <div id="lab-frame-info" class="hidden"></div>
+      <button id="lab-analyze" class="btn btn-primary">⚖ Weigh Every Action</button>
+      <button id="lab-explore" class="btn btn-ghost small hidden">⚔ Explore from this position</button>
+      <div id="lab-nav-row">
+        <button id="lab-undo" class="btn btn-ghost small hidden">↩ Undo</button>
+        <button id="lab-reset" class="btn btn-ghost small hidden">⟲ Reset</button>
+      </div>
+      <div id="lab-progress"><div id="lab-progress-fill"></div></div>
+      <div id="lab-error" aria-live="polite"></div>
+      <div id="lab-scroll">
+        <div id="lab-results" aria-live="polite"></div>
+        <div id="lab-review" class="hidden"></div>
+      </div>
+      <div id="lab-meta"></div>
+      <p class="lab-hint">Win EV = how often the mover wins from here. ▶ plays the move with real
+        draws so you can walk the line deeper.</p>
+    </aside>
+  </div>
+</section>
+
 <!-- ═════════ VICTORY ═════════ -->
 <section id="screen-victory" class="screen">
   <div class="victory-wrap">
@@ -115,6 +193,7 @@
     <div class="setup-actions">
       <button id="btn-rematch" class="btn btn-primary">Rematch</button>
       <button id="btn-newgame" class="btn btn-ghost">New Game</button>
+      <button id="btn-review" class="btn btn-ghost">⚖ Review the battle</button>
     </div>
   </div>
 </section>
@@ -134,14 +213,20 @@
 <button id="btn-music" class="btn-icon music" title="Toggle music" aria-label="Toggle music">♬</button>
 <button id="btn-sound" class="btn-icon" title="Toggle sound effects" aria-label="Toggle sound effects">♪</button>
 
-<script src="js/rules.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/sound.js"></script>
-<script src="js/music.js"></script>
-<script src="js/particles.js"></script>
-<script src="js/anim.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/engine.js"></script>
-<script src="js/main.js"></script>
+<script src="js/rules.js?v=10"></script>
+<script src="js/ai.js?v=10"></script>
+<script src="js/sound.js?v=10"></script>
+<script src="js/music.js?v=10"></script>
+<script src="js/particles.js?v=10"></script>
+<script src="js/anim.js?v=10"></script>
+<script src="js/ui.js?v=10"></script>
+<script src="js/engine.js?v=10"></script>
+<script src="js/lab.js?v=10"></script>
+<script src="js/main.js?v=10"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js');
+}
+</script>
 </body>
 </html>
