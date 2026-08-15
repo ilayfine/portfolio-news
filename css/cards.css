@@ -1,0 +1,456 @@
+/* SHIELD — cards.css
+ * Chunky parchment playing cards with thick outlines and playful idle wobble,
+ * slots, 3D flip structure, target highlighting.
+ */
+
+/* ---------------- slots ---------------- */
+
+.slot {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: var(--card-radius);
+  border: 3px dashed rgba(242, 228, 194, 0.28);
+  background: rgba(20, 11, 6, 0.3);
+  transition: border-color 0.25s ease;
+}
+
+.slot-tag {
+  position: absolute;
+  left: 50%;
+  bottom: -1.25rem;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: rgba(242, 228, 194, 0.8);
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* pinned plaque on the frame edge so the life row below can't clip it */
+.shield-slot .slot-tag {
+  color: #9fd0ff;
+  bottom: -0.6rem;
+  z-index: 6;
+  padding: 1px 7px 2px;
+  background: rgba(30, 18, 11, 0.92);
+  border: 1px solid rgba(79, 157, 240, 0.45);
+  border-radius: 7px;
+}
+
+/* the shield lies SIDEWAYS above the life row: horizontal box, rotated card */
+.shield-slot {
+  width: var(--card-h);
+  height: calc(var(--card-w) * 1.04);
+}
+
+.shield-slot::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: calc(var(--card-radius) + 6px);
+  border: 3px solid rgba(79, 157, 240, 0.65);
+  box-shadow: 0 3px 0 rgba(15, 8, 4, 0.3), inset 0 0 10px rgba(79, 157, 240, 0.18);
+  pointer-events: none;
+}
+
+/* ---------------- charge stack (hidden, face-down cards) ---------------- */
+
+.charge-stack {
+  position: relative;
+  width: calc(var(--card-w) * 0.74);
+  height: calc(var(--card-h) * 0.74);
+  border: 3px dotted rgba(242, 228, 194, 0.28);
+  border-radius: var(--card-radius);
+  background: rgba(20, 11, 6, 0.3);
+  align-self: flex-end;
+}
+
+.charge-stack::before {
+  content: '⚡';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: calc(var(--card-w) * 0.34);
+  color: rgba(242, 228, 194, 0.22);
+  pointer-events: none;
+}
+
+.charge-stack.filled::before { content: none; }
+.charge-stack.filled { border-color: transparent; }
+
+.cs-cards { position: absolute; inset: 0; }
+
+.cs-cards .card.mini {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: translate(calc(var(--stack-i) * 4px), calc(var(--stack-i) * -3px))
+    rotate(calc(var(--stack-i) * 4deg));
+}
+
+.cs-count {
+  position: absolute;
+  right: -9px;
+  top: -9px;
+  z-index: 5;
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: #241610;
+  background: linear-gradient(178deg, #ffc44d, var(--gold) 60%, #cf9422);
+  border: 2px solid #241610;
+  border-radius: 50%;
+  box-shadow: 0 3px 0 rgba(15, 8, 4, 0.4);
+}
+
+/* every slot owns a flash overlay for impact/heal/hurt effects */
+.slot-flash {
+  position: absolute;
+  inset: -6px;
+  border-radius: calc(var(--card-radius) + 6px);
+  background: radial-gradient(circle, var(--flash-color, #fff) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ---------------- card structure (3D flip-ready) ---------------- */
+
+.card {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  perspective: 700px;
+  border-radius: var(--card-radius);
+}
+
+.card .card-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+  border-radius: var(--card-radius);
+}
+
+.card.face-down .card-inner { transform: rotateY(180deg); }
+
+.card .face,
+.card .back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--card-radius);
+  overflow: hidden;
+}
+
+.card .back { transform: rotateY(180deg); }
+
+/* ---------------- card face: cream parchment, bold & chunky ---------------- */
+
+.card .face {
+  background:
+    radial-gradient(130% 100% at 30% 0%, rgba(255, 255, 255, 0.55), transparent 45%),
+    linear-gradient(168deg, #faf0d6 0%, #f2e4c2 55%, #e6d3a8 100%);
+  border: 3px solid #2a1c12;
+  box-shadow:
+    inset 0 -4px 0 rgba(130, 100, 55, 0.25),
+    0 4px 0 rgba(15, 8, 4, 0.35);
+  color: var(--suit-color, #33285a);
+  /* body serif, not the blackletter display font: Pirata One's J reads as "1",
+     which is fatal in a game where J=11 and A=1 */
+  font-family: var(--font-body);
+  font-weight: 700;
+}
+
+.card.red { --suit-color: #d9342b; }
+.card.black { --suit-color: #33285a; }
+
+.card .corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.95;
+  font-size: calc(var(--card-w) * 0.2);
+}
+
+.card .corner.tl { top: 6%; left: 9%; }
+.card .corner.br { bottom: 6%; right: 9%; transform: rotate(180deg); }
+
+.card .rank-big {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--card-w) * 0.52);
+  text-shadow: 0 calc(var(--card-w) * 0.035) 0 rgba(42, 28, 18, 0.25);
+}
+
+.card .suit-big {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--card-w) * 0.3);
+  font-family: var(--font-body);
+}
+
+/* stamped inner frame */
+.card .face::after {
+  content: '';
+  position: absolute;
+  inset: 6%;
+  border: 2px solid color-mix(in srgb, var(--suit-color, #33285a) 22%, transparent);
+  border-radius: calc(var(--card-radius) * 0.65);
+  pointer-events: none;
+}
+
+/* ---------------- joker ---------------- */
+
+.card.joker { --suit-color: #8a5fc9; }
+
+.card .joker-face { display: grid; place-items: center; }
+
+.joker-star {
+  font-size: calc(var(--card-w) * 0.52);
+  color: #8a5fc9;
+  text-shadow: 0 0 12px rgba(138, 95, 201, 0.7), 0 3px 0 rgba(42, 28, 18, 0.3);
+}
+
+.joker-word {
+  position: absolute;
+  bottom: 9%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: calc(var(--card-w) * 0.15);
+  letter-spacing: 0.18em;
+  color: #8a5fc9;
+}
+
+/* ---------------- pending "red cross" life card ---------------- */
+
+.slot.pending > .card { filter: grayscale(0.55) brightness(0.72); }
+
+.slot.pending::before {
+  content: '✕';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: calc(var(--card-w) * 0.78);
+  line-height: 1;
+  color: #e33d30;
+  text-shadow: 0 0 8px rgba(190, 30, 20, 0.55), 0 3px 0 rgba(0, 0, 0, 0.45);
+  z-index: 4;
+  pointer-events: none;
+  animation: crossStamp 0.32s cubic-bezier(0.22, 1.6, 0.36, 1);
+}
+
+/* the denomination this crossed card owes */
+.owe {
+  position: absolute;
+  right: -9px;
+  top: -9px;
+  z-index: 5;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: #fff;
+  background: linear-gradient(178deg, #ff6b5f, #c93333);
+  border: 2px solid #241610;
+  border-radius: 50%;
+  box-shadow: 0 3px 0 rgba(15, 8, 4, 0.4);
+}
+
+/* ---------------- card back: heraldic red & gold ---------------- */
+
+.card .back,
+.card.back-only {
+  background:
+    repeating-linear-gradient(45deg,
+      rgba(232, 185, 60, 0.16) 0 3px, transparent 3px 12px),
+    repeating-linear-gradient(-45deg,
+      rgba(232, 185, 60, 0.16) 0 3px, transparent 3px 12px),
+    linear-gradient(168deg, #96382c 0%, #7a2a22 55%, #5f1f19 100%);
+  border: 3px solid #2a1c12;
+  box-shadow:
+    inset 0 0 0 3px rgba(232, 185, 60, 0.5),
+    0 4px 0 rgba(15, 8, 4, 0.35);
+}
+
+.card .back::after,
+.card.back-only::after {
+  content: '⛨';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: calc(var(--card-w) * 0.44);
+  color: rgba(255, 217, 112, 0.85);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.card.back-only { position: relative; width: var(--card-w); height: var(--card-h); border-radius: var(--card-radius); }
+
+/* cards inside slots fill them — with a playful idle wobble */
+.slot > .card {
+  position: absolute;
+  inset: 0;
+  animation: cardIdle 3.4s ease-in-out infinite;
+}
+
+.slot:has(> .card) { border-color: transparent; background: none; }
+
+/* stagger the wobble so the table feels alive */
+.zone-cards .slot:nth-child(1) > .card { animation-delay: -0.6s; }
+.zone-cards .slot:nth-child(2) > .card { animation-delay: -1.4s; }
+.zone-cards .slot:nth-child(3) > .card { animation-delay: -2.2s; }
+.zone-cards .slot:nth-child(4) > .card { animation-delay: -2.9s; }
+
+/* springy hover pop */
+.slot > .card:hover {
+  animation: none;
+  transform: translateY(-4px) rotate(-2deg) scale(1.06);
+  transition: transform 0.16s cubic-bezier(.34,1.56,.64,1);
+}
+
+/* the shield card lies SIDEWAYS in its horizontal slot.
+ * Placed after (and more specific than) the generic .slot > .card rules so the
+ * 90° rotation actually wins. */
+.slot.shield-slot > .card {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  /* base rotation so the card stays sideways even without the idle animation */
+  transform: translate(-50%, -50%) rotate(90deg);
+  animation: shieldIdle 3.4s ease-in-out infinite;
+}
+
+.slot.shield-slot > .card:hover {
+  animation: none;
+  transform: translate(-50%, calc(-50% - 3px)) rotate(88deg) scale(1.06);
+  transition: transform 0.16s cubic-bezier(.34,1.56,.64,1);
+}
+
+/* flying ghost cards (fx-layer) */
+.card.flying {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin: 0;
+  z-index: 61;
+  filter: drop-shadow(0 9px 0 rgba(15, 8, 4, 0.3));
+}
+
+/* ---------------- targeting ---------------- */
+
+#arena.dimmed .player-zone:not(.targetable),
+#arena.dimmed #center {
+  filter: brightness(0.45) saturate(0.55);
+  transition: filter 0.3s ease;
+}
+
+.player-zone.targetable { cursor: pointer; }
+
+.player-zone.targetable::before {
+  content: '';
+  position: absolute;
+  inset: -11px;
+  border-radius: 22px;
+  border: 4px dashed var(--target-color, var(--gold));
+  box-shadow: 0 0 0 3px rgba(36, 22, 16, 0.6), 0 0 22px color-mix(in srgb, var(--target-color, var(--gold)) 45%, transparent);
+  animation: targetPulse 1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.player-zone.targetable:hover {
+  filter: brightness(1.12);
+  transform: translate(-50%, -50%) scale(1.03);
+  transition: transform 0.15s cubic-bezier(.34,1.56,.64,1);
+}
+
+.slot.targetable {
+  cursor: pointer;
+  z-index: 5;
+}
+
+.slot.targetable::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: calc(var(--card-radius) + 8px);
+  border: 4px dashed var(--target-color, var(--gold));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--target-color, var(--gold)) 55%, transparent);
+  animation: targetPulse 0.85s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.slot.targetable:hover { transform: scale(1.09) rotate(-1.5deg); transition: transform 0.14s cubic-bezier(.34,1.56,.64,1); }
+
+/* ---------------- current player & eliminated states ---------------- */
+
+.player-zone.active-zone {
+  border-color: color-mix(in srgb, var(--accent) 75%, #241610);
+  box-shadow:
+    0 7px 0 rgba(15, 8, 4, 0.42),
+    0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent),
+    inset 0 3px 0 rgba(255, 235, 190, 0.12);
+}
+
+.player-zone.active-zone::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -13px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+  border-top: 13px solid var(--accent);
+  filter: drop-shadow(0 2px 0 #241610);
+  animation: pointerBob 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.player-zone.eliminated {
+  filter: grayscale(0.9) brightness(0.55);
+  opacity: 0.6;
+}
+
+.slain-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  transform: translate(-50%, -50%) rotate(-12deg) scale(0);
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 4vmin, 2.5rem);
+  letter-spacing: 0.12em;
+  color: #ff5f52;
+  border: 4px solid #ff5f52;
+  border-radius: 10px;
+  padding: 0.06em 0.4em 0.12em;
+  text-shadow: -2px 0 0 #241610, 2px 0 0 #241610, 0 -2px 0 #241610, 0 2px 0 #241610;
+  box-shadow: 0 4px 0 rgba(15, 8, 4, 0.5), inset 0 0 0 2px #241610;
+  background: rgba(36, 22, 16, 0.82);
+  pointer-events: none;
+}
+
+.player-zone.eliminated .slain-stamp {
+  animation: stampSlam 0.4s cubic-bezier(0.22, 1.6, 0.36, 1) forwards;
+}

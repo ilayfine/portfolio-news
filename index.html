@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHIELD — a card game of steel and fortune</title>
+<meta name="description" content="Shield — a dark fantasy hot-seat card game for 2–4 players.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 6 88 20v28c0 24-16 39-38 46C28 87 12 72 12 48V20Z' fill='%23150f22' stroke='%23d4a94e' stroke-width='6'/%3E%3Ctext x='50' y='64' font-size='38' text-anchor='middle' fill='%23d4a94e'%3E%E2%9A%94%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/cards.css">
+<link rel="stylesheet" href="css/fx.css">
+</head>
+<body>
+
+<!-- ambient ember / burst particle layer -->
+<canvas id="particles" aria-hidden="true"></canvas>
+
+<!-- wall torches -->
+<div class="torch-glow gl" aria-hidden="true"></div>
+<div class="torch-glow gr" aria-hidden="true"></div>
+<div class="torch torch-l" aria-hidden="true">
+  <span class="t-bracket"></span>
+  <span class="t-stick"></span>
+  <span class="t-cage"></span>
+  <span class="t-flame"><i class="f-outer"></i><i class="f-mid"></i><i class="f-core"></i></span>
+</div>
+<div class="torch torch-r" aria-hidden="true">
+  <span class="t-bracket"></span>
+  <span class="t-stick"></span>
+  <span class="t-cage"></span>
+  <span class="t-flame"><i class="f-outer"></i><i class="f-mid"></i><i class="f-core"></i></span>
+</div>
+
+<!-- ═════════ TITLE ═════════ -->
+<section id="screen-title" class="screen active">
+  <div class="title-wrap">
+    <div class="title-emblem" aria-hidden="true">
+      <div class="emblem-ring"></div>
+      <div class="emblem-shield"><span>⚔</span></div>
+    </div>
+    <h1 class="game-title">SHIELD</h1>
+    <p class="tagline">a duel of steel &amp; fortune</p>
+    <button id="btn-play" class="btn btn-primary">Enter the Arena</button>
+    <p class="title-hint">2–4 players &middot; one screen &middot; last one standing wins</p>
+  </div>
+</section>
+
+<!-- ═════════ SETUP ═════════ -->
+<section id="screen-setup" class="screen">
+  <div class="setup-wrap">
+    <h2 class="setup-title">Summon the Champions</h2>
+    <div class="count-picker" role="group" aria-label="Number of players">
+      <button class="count-btn" data-count="2">2</button>
+      <button class="count-btn active" data-count="3">3</button>
+      <button class="count-btn" data-count="4">4</button>
+    </div>
+    <div id="name-inputs"></div>
+    <div class="setup-actions">
+      <button id="btn-begin" class="btn btn-primary">Begin the Battle</button>
+      <button id="btn-back" class="btn btn-ghost">Back</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ TABLE ═════════ -->
+<section id="screen-table" class="screen">
+  <div id="turn-banner"><span id="banner-text"></span></div>
+  <div id="table-shake">
+    <div id="arena">
+      <div id="center" aria-hidden="true">
+        <div class="arena-ring"></div>
+        <div id="deck" class="pile">
+          <div class="deck-stack">
+            <div class="card mini back-only"></div>
+            <div class="card mini back-only"></div>
+            <div class="card mini back-only"></div>
+          </div>
+          <span id="deck-count" class="pile-count"></span>
+        </div>
+        <div id="stage"></div>
+        <div id="discard" class="pile"><span class="pile-tag">DISCARD</span></div>
+      </div>
+      <!-- player zones injected by ui.js -->
+    </div>
+  </div>
+  <div id="action-bar">
+    <button id="btn-attack" class="action-btn" data-action="attack">
+      <span class="action-icon">⚔</span><span class="action-label">Attack</span>
+    </button>
+    <button id="btn-shield" class="action-btn" data-action="shield">
+      <span class="action-icon">⛨</span><span class="action-label">Change Shield</span>
+    </button>
+    <button id="btn-charge" class="action-btn" data-action="charge">
+      <span class="action-icon">⚡</span><span class="action-label">Charge</span>
+    </button>
+    <button id="btn-gamble" class="action-btn gamble" data-action="gamble" title="">
+      <span class="gamble-logo" aria-hidden="true"></span>
+    </button>
+    <button id="btn-cancel" class="action-btn cancel hidden">✕ Cancel</button>
+    <button id="btn-decline" class="action-btn cancel hidden">✋ Decline</button>
+  </div>
+  <div id="log" aria-live="polite"></div>
+</section>
+
+<!-- ═════════ VICTORY ═════════ -->
+<section id="screen-victory" class="screen">
+  <div class="victory-wrap">
+    <p class="victory-label">victorious</p>
+    <h1 id="victory-name"></h1>
+    <p class="victory-sub">last one standing</p>
+    <div class="setup-actions">
+      <button id="btn-rematch" class="btn btn-primary">Rematch</button>
+      <button id="btn-newgame" class="btn btn-ghost">New Game</button>
+    </div>
+  </div>
+</section>
+
+<!-- gamble / confirmation modal -->
+<div id="modal" class="hidden">
+  <div class="modal-panel">
+    <p id="modal-question"></p>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
+
+<!-- flying cards & floating combat text -->
+<div id="fx-layer" aria-hidden="true"></div>
+
+<!-- persistent sound & music toggles -->
+<button id="btn-music" class="btn-icon music" title="Toggle music" aria-label="Toggle music">♬</button>
+<button id="btn-sound" class="btn-icon" title="Toggle sound effects" aria-label="Toggle sound effects">♪</button>
+
+<script src="js/rules.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/music.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/anim.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

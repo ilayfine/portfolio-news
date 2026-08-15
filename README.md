@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ⚔ SHIELD
 
-## Getting Started
+A medieval castle card game for **2–4 players on one screen** (hot-seat, with optional
+CPU opponents), played with a
+54-card deck (jokers included) — mossy castle walls, flickering torches, a round wooden table, and
+chunky parchment cards with playful, snappy animations. Pure HTML/CSS/JS — no build step, no dependencies, no server.
 
-First, run the development server:
+## Play it
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **On your computer:** just open `index.html` in any modern browser (double-click it).
+- **On the web:** host the folder anywhere that serves static files —
+  - **GitHub Pages:** repo Settings → Pages → deploy from branch → done.
+  - **Netlify / Vercel:** drag-and-drop the folder or import the repo. No build command,
+    output directory is the repo root.
+
+Epic medieval background music starts with your first click — toggle it with the ♬
+button (bottom-right), and sound effects with the ♪ button below it. Both
+preferences are remembered. All audio is synthesized live with WebAudio — the game
+ships zero sound files.
+
+## CPU opponents
+
+Any seat can be handed to the computer: on the setup screen, click the button next
+to a name to cycle **Human → CPU Easy → CPU Medium → CPU Hard → ☠ Impossible**. Bots
+play through the same animations you do (⚙ marks them at the table), take counters,
+and gamble when desperate. Mix humans and bots freely — or set every seat to CPU
+and watch.
+
+- **Easy** blunders half the time. **Medium** plays solid card-counting heuristics.
+- **Hard** and **☠ Impossible** run paired Monte Carlo search: every legal move is
+  evaluated by simulating complete games against the same set of possible worlds
+  (the unseen cards reshuffled per world — they cannot peek), and the move that
+  wins the most futures is played. Impossible thinks ~14× harder than Hard
+  (roughly 3,000–6,000 simulated games per decision, still well under a second).
+- Measured ladder over 80-game head-to-head matches: Medium beats Easy ~71%,
+  Hard beats Medium ~59%, Impossible beats Hard ~57% (and Medium ~69%). Shield
+  rolls a lot of dice — no bot can escape the luck of the draw entirely.
+
+## Rules
+
+Played with a standard deck **plus two jokers** (54 cards). Card values: **A = 1**,
+2–10 face value, **J = 11, Q = 12, K = 13**. Suits only matter when gambling.
+
+Every player starts with a sideways **Shield** card and two **Life** cards. Your
+life IS the cards: your total health is the sum of your life cards' values.
+Lose them all and you're out. **Last one standing wins.**
+
+On your turn, do exactly one of:
+
+- **⚔ Attack** — pick a target and draw a card; that's your attack value (plus any
+  hidden charges you hold, which are revealed and spent).
+  - If it **beats** the target's shield, they take the difference as damage. Damage
+    hits their **lowest life card first**: the card swaps to its reduced
+    denomination (a 6 that takes 4 becomes a 2). The replacement comes from the
+    burnt pile if it's there — otherwise the card is marked with a **red cross**
+    and owes that value until one turns up in the burnt pile, then swaps
+    automatically. A card reduced to nothing is destroyed, and leftover damage
+    spills onto the next-lowest card. Taking any life damage also **burns all your
+    hidden charges**.
+  - If it's **equal or lower**, the attack is *blocked* — and the defender may
+    strike back: they pick one of **your** life cards, which is replaced by a
+    random card from the deck. (The random card can help you by accident, so the
+    defender may also **decline** and let the moment pass.)
+- **⛨ Change Shield** — replace anyone's shield (yours included) with a random card
+  from the deck.
+- **⚡ Charge** — draw a card **face down** into your charge stack. Nobody sees it
+  (not even you) until your next attack adds every held charge to the drawn card.
+  Charges stack without limit — but you lose them all if someone lands a hit on you.
+- **◆ The sigil button** — *gamble on the life*. Call **red or black**; if the next
+  card matches, it joins your life. If it doesn't, you die on the spot.
+
+**Jokers:** any draw that turns up a joker grants the drawer an **extra life card**
+(the next card off the deck), and then the draw continues for its original purpose.
+This applies to every action — even mid-gamble (the color call stays locked) and
+counters (there it's the defender doing the drawing who benefits). The exception
+is **charging**: a joker drawn into your charge stays hidden like any charge, and
+only pays out when an attack reveals it — you get the life card then, and an extra
+card is drawn to fight in the joker's place.
+
+## Project layout
+
+```
+index.html        screens & markup (plain <script> tags — works over file://)
+css/              theme, layout, cards, effects
+js/rules.js       pure game logic (no DOM) — emits event lists
+js/ai.js          CPU players: heuristics + determinized Monte Carlo search
+js/engine.js      turn/phase state machine
+js/ui.js          rendering + event→animation playback
+js/anim.js        Web-Animations-API toolkit (flips, flights, shakes, floats)
+js/particles.js   canvas embers & burst effects
+js/sound.js       WebAudio-synthesized sound effects (no audio files)
+js/music.js       procedural medieval background music (drone, harp, horn, drums)
+test/test.html    logic test suite — open in a browser, or: node test/tests.js
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Development notes
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Logic tests: `node test/tests.js` (or open `test/test.html`) — includes a 500-game
+  fuzz test asserting card conservation and termination.
+- Debug hooks: open `index.html?debug=1&seed=42` to get a deterministic deal and a
+  `window.__shield` handle (`.state`, `.forceNextDraw(rank)`, `.engine`).
+- Honors `prefers-reduced-motion`.

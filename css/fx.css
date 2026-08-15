@@ -1,0 +1,138 @@
+/* SHIELD — fx.css
+ * Keyframes and looping effect classes. One-shot effects are driven by the
+ * Web Animations API in anim.js; only loops and stamps live here.
+ */
+
+/* playful Balatro-style wobble for big titles */
+@keyframes titleWobble {
+  0%, 100% { transform: rotate(-1.6deg) scale(1); }
+  50%      { transform: rotate(1.6deg) scale(1.025); }
+}
+
+@keyframes emblemBob {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50%      { transform: translateY(-7px) rotate(1.5deg); }
+}
+
+/* gentle idle wobble for cards sitting in slots */
+@keyframes cardIdle {
+  0%, 100% { transform: translateY(0) rotate(-0.9deg); }
+  50%      { transform: translateY(-2.5px) rotate(0.9deg); }
+}
+
+@keyframes pointerBob {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(-4px); }
+}
+
+@keyframes targetPulse {
+  0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); }
+  50%      { opacity: 0.65; transform: scale(1.03) rotate(0.4deg); }
+}
+
+@keyframes stampSlam {
+  0%   { transform: translate(-50%, -50%) rotate(-12deg) scale(3); opacity: 0; }
+  60%  { transform: translate(-50%, -50%) rotate(-12deg) scale(0.9); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(-12deg) scale(1); opacity: 1; }
+}
+
+/* torch flames — three tongues wobbling out of phase */
+@keyframes flameOuter {
+  0%, 100% { transform: scale(1, 1) rotate(-2.5deg) skewX(0deg); }
+  30%      { transform: scale(1.07, 0.93) rotate(2.5deg) skewX(3.5deg); }
+  55%      { transform: scale(0.94, 1.1) rotate(-1.5deg) skewX(-3deg); }
+  80%      { transform: scale(1.04, 0.97) rotate(1.5deg) skewX(1.5deg); }
+}
+
+@keyframes flameMid {
+  0%, 100% { transform: scale(1, 1) rotate(2deg) skewX(-2deg); }
+  35%      { transform: scale(0.92, 1.12) rotate(-3deg) skewX(3deg); }
+  70%      { transform: scale(1.08, 0.94) rotate(1.5deg) skewX(-1.5deg); }
+}
+
+@keyframes flameCore {
+  0%, 100% { transform: scale(1, 1) translateY(0); opacity: 1; }
+  40%      { transform: scale(0.88, 1.18) translateY(-2px); opacity: 0.85; }
+  75%      { transform: scale(1.1, 0.9) translateY(0.5px); opacity: 1; }
+}
+
+@keyframes glowBreathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.55; }
+}
+
+/* charge slot aura — looping while a charge is held */
+@keyframes chargeAura {
+  0%, 100% { opacity: 0.6; transform: scale(1) rotate(-1deg); }
+  50%      { opacity: 1; transform: scale(1.06) rotate(1deg); }
+}
+
+@keyframes chargeBob {
+  0%, 100% { transform: translateY(0) rotate(-1.4deg); }
+  50%      { transform: translateY(-5px) rotate(1.4deg); }
+}
+
+.charge-stack.filled .cs-cards {
+  animation: chargeBob 2s ease-in-out infinite;
+}
+
+.charge-stack.filled {
+  box-shadow: 0 0 18px rgba(255, 175, 46, 0.45);
+}
+
+/* the sideways shield's idle sway (keeps its 90° base rotation) */
+@keyframes shieldIdle {
+  0%, 100% { transform: translate(-50%, -50%) rotate(89.2deg); }
+  50%      { transform: translate(-50%, calc(-50% - 2.5px)) rotate(90.8deg); }
+}
+
+/* red cross slams onto a wounded life card */
+@keyframes crossStamp {
+  0%   { transform: scale(2.6); opacity: 0; }
+  60%  { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes gambleSpin {
+  from { transform: rotate(45deg) scale(1); }
+  50%  { transform: rotate(225deg) scale(1.15); }
+  to   { transform: rotate(405deg) scale(1); }
+}
+
+@keyframes modalPop {
+  from { transform: scale(0.85) translateY(14px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* floating combat text (positioned by anim.js, animated via WAAPI) */
+.float-text {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 62;
+  font-family: var(--font-display);
+  letter-spacing: 0.03em;
+  font-size: clamp(1.7rem, 4.2vmin, 2.8rem);
+  pointer-events: none;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  text-shadow:
+    -3px 0 0 #241610, 3px 0 0 #241610, 0 -3px 0 #241610, 0 3px 0 #241610,
+    -2px -2px 0 #241610, 2px -2px 0 #241610, -2px 2px 0 #241610, 2px 2px 0 #241610,
+    0 5px 0 rgba(15, 8, 4, 0.45);
+}
+
+.float-text.damage { color: #ff5f52; }
+.float-text.heal   { color: #6ee786; }
+.float-text.block  { color: #8fc9ff; }
+.float-text.info   { color: var(--gold-bright); }
+.float-text.small  { font-size: clamp(1.1rem, 2.6vmin, 1.7rem); }
+
+/* accessibility: reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}
