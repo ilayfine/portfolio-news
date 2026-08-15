@@ -612,6 +612,38 @@
     })();
 
     (function () {
+      // information hygiene: a bot's decision may depend only on the unseen
+      // MULTISET (card counting), never on which cards sit in whose charge
+      // stack vs the deck. Swapping a hidden charge card with a deck card
+      // changes nothing a fair player could observe — so every tier must
+      // make the exact same choice, bit for bit.
+      function partitionSwapped(seed) {
+        var a = R.newGame(['A', 'B'], seed);
+        a.players[0].charge = [a.deck.pop(), a.deck.pop()];
+        a.currentIdx = 1; // the OPPONENT of the charge holder decides
+        var b = AI.cloneState(a, null);
+        var tmp = b.players[0].charge[0];          // swap a hidden charge card
+        b.players[0].charge[0] = b.deck[3];        // with an arbitrary deck card
+        b.deck[3] = tmp;
+        return [a, b];
+      }
+      var pair = partitionSwapped(603);
+      var mvA = AI.chooseSync(pair[0], 1, 'medium', { seed: 11 });
+      var mvB = AI.chooseSync(pair[1], 1, 'medium', { seed: 11 });
+      assert(JSON.stringify(mvA) === JSON.stringify(mvB),
+        'medium is blind to the deck/charge partition');
+      var hA = AI.chooseSync(pair[0], 1, 'hard', { seed: 12, sims: 30 });
+      var hB = AI.chooseSync(pair[1], 1, 'hard', { seed: 12, sims: 30 });
+      assert(JSON.stringify(hA) === JSON.stringify(hB),
+        'hard search is blind to the deck/charge partition');
+      // and the charge HOLDER is equally blind to their own stack contents
+      var oA = AI.chooseSync(pair[0], 0, 'hard', { seed: 13, sims: 30 });
+      var oB = AI.chooseSync(pair[1], 0, 'hard', { seed: 13, sims: 30 });
+      assert(JSON.stringify(oA) === JSON.stringify(oB),
+        'a bot cannot peek at its own hidden charges');
+    })();
+
+    (function () {
       // strength: hard (reduced sims) must clearly beat easy across a mini-tournament
       var hardWins = 0, games = 24;
       for (var g = 0; g < games; g++) {
