@@ -26,15 +26,34 @@ play through the same animations you do (⚙ marks them at the table), take coun
 and gamble when desperate. Mix humans and bots freely — or set every seat to CPU
 and watch.
 
-- **Easy** blunders half the time. **Medium** plays solid card-counting heuristics.
-- **Hard** and **☠ Impossible** run paired Monte Carlo search: every legal move is
-  evaluated by simulating complete games against the same set of possible worlds
-  (the unseen cards reshuffled per world — they cannot peek), and the move that
-  wins the most futures is played. Impossible thinks ~14× harder than Hard
-  (roughly 3,000–6,000 simulated games per decision, still well under a second).
-- Measured ladder over 80-game head-to-head matches: Medium beats Easy ~71%,
-  Hard beats Medium ~59%, Impossible beats Hard ~57% (and Medium ~69%). Shield
-  rolls a lot of dice — no bot can escape the luck of the draw entirely.
+All bots price every action in one currency — expected net HP swing, computed
+by exact card-counting over the unseen multiset (deck + hidden charge stacks;
+they know the counts, never the contents — their decisions are provably
+identical however the unseen cards are split, see `test/tests.js`).
+
+- **Easy** blunders half the time. **Medium** plays the EV scores greedily.
+- **Hard** runs paired flat Monte Carlo (~750 simulated games per decision):
+  every legal move is evaluated against the same set of possible worlds (the
+  unseen cards reshuffled per world — bots cannot peek), with rollouts played
+  by a stochastic softmax policy over the EV scores.
+- **☠ Impossible** runs adversarial tree search (ISMCTS), time-boxed to a
+  flat second per decision (tens of thousands of complete games): inside the
+  first plies of the tree, every player's replies — counters included — are
+  chosen by accumulating statistics, so they converge onto each player's
+  strongest line instead of averaging over soft ones. A move with a hidden
+  refutation gets punished for it. The War Council analyzer uses the same
+  tree search.
+- Measured ladder (`node test/ladder.js`, 80–360 games per matchup): Medium
+  beats Easy ~70%, Hard beats Medium ~56–60%, Impossible beats Hard ~66%,
+  and the current search beats the previous generation's search ~54%. In
+  4-player free-for-alls (one seat per tier, rotated) Impossible wins half
+  the games: Easy 4%, Medium 23%, Hard 23%, Impossible 50%. Shield rolls a
+  lot of dice — no bot can escape the luck of the draw entirely.
+- The scoring constants are tuned empirically, not guessed: parameter sets
+  fight head-to-head in the harness (each seat plays by its own worldview).
+  Biggest measured lesson: greedy play undervalued shields ~2.7× (fixed), and
+  ever-growing late-game bloodlust is needed to stop rare 4-searcher
+  stalemates.
 
 ## Rules
 
