@@ -244,6 +244,19 @@
     0 0 10px rgba(138, 95, 201, 0.8);
 }
 
+/* the cheat: sickly green, and it flickers like a bad terminal */
+.seat-btn.cpu-hacker {
+  background: linear-gradient(178deg, #34d17a, #0f7a44 55%, #053a20);
+  text-shadow: -1px 0 0 #041a0d, 1px 0 0 #041a0d, 0 -1px 0 #041a0d, 0 1px 0 #041a0d,
+    0 0 10px rgba(52, 209, 122, 0.9);
+  animation: hacker-flicker 3.5s infinite;
+}
+@keyframes hacker-flicker {
+  0%, 92%, 100% { filter: none; }
+  94% { filter: brightness(1.35) hue-rotate(-12deg); }
+  96% { filter: brightness(0.85); }
+}
+
 /* ---------------- table / arena ---------------- */
 
 #screen-table { display: block; }
@@ -737,4 +750,112 @@
   color: var(--ink-dim);
   letter-spacing: 0.1em;
   margin-bottom: 1.4rem;
+}
+
+/* ---------------- phones (portrait) ----------------
+ * One column, stacked bands: banner / foes / table / you / actions.
+ * Seats move closer together, cards shrink, the action bar turns into
+ * compact icon-over-label buttons that fit a 375px screen.
+ */
+
+@media (max-width: 600px) {
+  :root {
+    --card-w: clamp(38px, 11.5vw, 54px);
+  }
+
+  /* audio toggles: bottom-right belongs to the action bar now */
+  .btn-icon { right: auto; left: 8px; top: 8px; bottom: auto; width: 40px; height: 40px; }
+  .btn-icon.music { top: 54px; }
+
+  .torch { display: none; }
+  .torch-glow { display: none; }
+
+  /* ---- setup ---- */
+  .setup-wrap { width: min(480px, 94vw); gap: 1rem; }
+  .name-row { gap: 0.5rem; }
+  .name-input { min-width: 0; font-size: 1rem; padding: 0.45em 0.6em; }
+  .seat-btn { min-width: 0; font-size: 0.76rem; padding: 0.5em 0.55em 0.55em; }
+  .setup-actions { flex-wrap: wrap; justify-content: center; }
+
+  /* ---- table ---- */
+  /* width: max-content — an absolutely-positioned zone otherwise shrinks to
+     the space right of its `left` offset, wrapping cards it shouldn't */
+  .player-zone { width: max-content; padding: 0.45rem 0.55rem 1.3rem; gap: 0.4rem; border-width: 3px; }
+  .zone-body { gap: 8px; }
+  .zone-cards {
+    gap: 5px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(var(--card-w) * 3.5);
+  }
+
+  .players-2 #zone-1 { top: 24%; }
+  .players-2 #zone-0 { top: 75%; }
+
+  .players-3 #zone-1 { left: 25%; top: 24%; }
+  .players-3 #zone-2 { left: 75%; top: 24%; }
+  .players-3 #zone-0 { top: 75%; }
+
+  .players-4 #zone-1 { left: 25%; top: 22%; }
+  .players-4 #zone-2 { left: 75%; top: 22%; }
+  .players-4 #zone-3 { left: 25%; top: 47%; }
+  .players-4 #zone-0 { left: 50%; top: 75%; }
+
+  #center { top: 48%; gap: 12px; }
+  /* 4 players: the deck row shares the middle band with the fourth seat */
+  .players-4 #center { left: 75%; top: 47%; gap: 10px; }
+
+  #screen-table .arena-ring {
+    width: min(80vw, 300px);
+    height: min(80vw, 300px);
+    border-width: 6px;
+  }
+  #screen-table .players-4 .arena-ring {
+    width: min(52vw, 200px);
+    height: min(52vw, 200px);
+  }
+
+  /* ---- turn banner ---- */
+  #banner-text {
+    font-size: 1rem;
+    white-space: normal;
+    text-align: center;
+    max-width: calc(100vw - 104px);
+    padding: 0.3em 0.9em 0.38em;
+  }
+
+  /* ---- action bar: icon over a small label ---- */
+  #action-bar {
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    gap: 0.4rem;
+    padding: 0.45rem 0.5rem;
+    width: max-content;
+    max-width: calc(100vw - 8px);
+    flex-wrap: wrap;
+    justify-content: center;
+    border-width: 3px;
+  }
+  .action-btn {
+    flex-direction: column;
+    gap: 0.15em;
+    font-size: 0.62rem;
+    letter-spacing: 0.03em;
+    padding: 0.5em 0.75em;
+    text-shadow: -1px 0 0 #241610, 1px 0 0 #241610, 0 -1px 0 #241610, 0 1px 0 #241610;
+  }
+  .action-btn .action-icon { font-size: 1.45rem; }
+  .action-btn.cancel { flex-direction: row; font-size: 0.9rem; padding: 0.55em 0.9em; }
+  .action-btn.gamble { padding: 0.5em 0.8em; }
+  .gamble-logo { width: 1.5rem; height: 1.5rem; }
+
+  /* ---- log: above the action bar, out of its way ---- */
+  #log {
+    left: 8px;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    max-width: 44vw;
+  }
+
+  /* ---- modal & victory ---- */
+  .modal-panel { max-width: 94vw; }
+  .victory-wrap { width: min(94vw, 480px); padding: 1.5rem 1rem; }
 }
