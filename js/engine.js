@@ -15,14 +15,25 @@
     phase: 'TITLE',
     state: null,
     names: [],
-    bots: [],        // per seat: null | 'easy' | 'medium' | 'hard'
+    bots: [],        // per seat: null | 'easy' | 'medium' | 'hard' | 'impossible'
     seed: undefined, // set by main.js in debug mode
 
     isBot(id) { return !!this.bots[id]; },
 
+    /* snapshot the position + move about to be played (War Council review) */
+    record(mv) {
+      if (!global.Shield.ai) return;
+      this.history.push({
+        state: global.Shield.ai.cloneState(this.state, null),
+        pid: this.state.currentIdx,
+        mv: mv
+      });
+    },
+
     async startMatch(names, bots) {
       this.names = names.slice();
       this.bots = (bots || []).slice();
+      this.history = []; // every main move with its pre-move state, for review
       UI.setBots(this.bots);
       this.state = R.newGame(names, this.seed);
       UI.buildTable(this.state);
@@ -50,6 +61,7 @@
       await wait(650); // a beat of "thinking"
       var mv = await global.Shield.ai.choose(this.state, p.id, this.bots[p.id]);
       if (this.phase !== 'BOT_TURN') return;
+      this.record(mv);
       var state = this.state;
       if (mv.type === 'attack') {
         await this.resolve(function () { return R.resolveAttack(state, mv.target); });
@@ -84,6 +96,7 @@
       } else if (kind === 'charge') {
         if (!la.charge) return;
         var state = this.state;
+        this.record({ type: 'charge' });
         this.resolve(function () { return R.resolveCharge(state); });
       } else if (kind === 'gamble') {
         if (!la.gamble) return;
@@ -95,6 +108,7 @@
           UI.gambleColor(function (guess) {
             if (self.phase !== 'GAMBLE_COLOR') return;
             var st = self.state;
+            self.record({ type: 'gamble', guess: guess });
             self.resolve(function () { return R.resolveGamble(st, guess); });
           });
         }, function () {
@@ -120,8 +134,10 @@
       UI.exitTargetMode();
       var state = this.state;
       if (kind === 'TARGET_ATTACK') {
+        this.record({ type: 'attack', target: targetId });
         this.resolve(function () { return R.resolveAttack(state, targetId); });
       } else {
+        this.record({ type: 'shield', target: targetId });
         this.resolve(function () { return R.resolveChangeShield(state, targetId); });
       }
     },
@@ -181,9 +197,22 @@
       await this.endTurn();
     },
 
+    /* the position after the last move, so a review can show the finish */
+    recordFinal() {
+      if (!global.Shield.ai) return;
+      var last = this.history[this.history.length - 1];
+      if (last && !last.mv) return; // already stamped
+      this.history.push({
+        state: global.Shield.ai.cloneState(this.state, null),
+        pid: null,
+        mv: null
+      });
+    },
+
     async endTurn() {
       if (this.state.winnerId !== null) {
         this.phase = 'VICTORY';
+        this.recordFinal();
         await UI.showVictory(this.state.players[this.state.winnerId]);
         return;
       }
@@ -193,6 +222,7 @@
       }
       if (this.state.winnerId !== null) {
         this.phase = 'VICTORY';
+        this.recordFinal();
         await UI.showVictory(this.state.players[this.state.winnerId]);
         return;
       }

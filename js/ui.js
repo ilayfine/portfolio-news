@@ -22,8 +22,11 @@
   var bots = [];       // per seat: null | 'easy' | 'medium' | 'hard'
   var seatTypes = [null, null, null, null]; // setup-screen selections
 
-  var SEAT_LABELS = { easy: '⚙ CPU · Easy', medium: '⚙ CPU · Medium', hard: '⚙ CPU · Hard', impossible: '☠ Impossible' };
-  var SEAT_CYCLE = [null, 'easy', 'medium', 'hard', 'impossible'];
+  var SEAT_LABELS = {
+    easy: '⚙ CPU · Easy', medium: '⚙ CPU · Medium', hard: '⚙ CPU · Hard',
+    impossible: '☠ Impossible', hacker: '👁 Hacker · sees the deck'
+  };
+  var SEAT_CYCLE = [null, 'easy', 'medium', 'hard', 'impossible', 'hacker'];
 
   function setBots(b) { bots = b || []; }
 
@@ -1053,6 +1056,7 @@
 
   global.Shield.ui = {
     ACCENTS: ACCENTS,
+    cardEl: cardEl,
     setBots: setBots,
     readSeats: readSeats,
     showScreen: showScreen,
